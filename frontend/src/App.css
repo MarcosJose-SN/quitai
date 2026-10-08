@@ -1,0 +1,1167 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #fff7fa;
+  color: #333;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.app {
+  min-height: 100vh;
+
+  /* Aumentado para evitar que o conteúdo fique atrás
+     da navegação inferior */
+  padding-bottom: 105px;
+}
+
+/* TOPO */
+
+.topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 20px 18px;
+  background: #ffffff;
+}
+
+.saudacao {
+  font-size: 14px;
+  color: #888;
+}
+
+.topo h1 {
+  margin: 5px 0 0;
+  font-size: 25px;
+  color: #333;
+}
+
+.botao-notificacao {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff0f5;
+  font-size: 19px;
+}
+
+/* CONTEÚDO */
+
+.conteudo {
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+
+  /*
+    Antes: 18px 20px 30px
+    Agora existe mais espaço inferior para que
+    a tela de detalhes possa ser rolada até o fim.
+  */
+  padding: 18px 20px 120px;
+}
+
+/* RESUMO */
+
+.resumo {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+}
+
+.resumo-card {
+  padding: 18px;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.05);
+}
+
+.resumo-card span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #888;
+}
+
+.resumo-card strong {
+  font-size: 21px;
+  color: #333;
+}
+
+.resumo-card.principal {
+  background: #f6a8c1;
+  color: #ffffff;
+}
+
+.resumo-card.principal span,
+.resumo-card.principal strong {
+  color: #ffffff;
+}
+
+/* AÇÃO */
+
+.acoes {
+  margin: 18px 0 26px;
+}
+
+.acao-principal {
+  width: 100%;
+  border: 0;
+  border-radius: 16px;
+  padding: 16px;
+  background: #e96f9a;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: 0 6px 15px rgba(233, 111, 154, 0.25);
+}
+
+.acao-principal span {
+  margin-right: 7px;
+  font-size: 20px;
+}
+
+/* SEÇÃO */
+
+.secao {
+  margin-top: 10px;
+}
+
+.titulo-secao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.titulo-secao h2 {
+  margin: 0;
+
+  color: #707070;
+
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.titulo-secao button {
+  border: 0;
+  background: transparent;
+  color: #df5f8d;
+  font-size: 13px;
+}
+
+/* =========================================================
+   VENDAS
+   ========================================================= */
+
+.card-venda {
+  width: 100%;
+
+  padding: 24px 22px;
+
+  margin-bottom: 18px;
+
+  border-radius: 22px;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.05);
+
+  border: 1px solid #f5e9ed;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.card-venda:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 7px 22px rgba(0, 0, 0, 0.07);
+}
+
+.card-venda:active {
+  transform: scale(0.995);
+}
+
+.card-venda-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 12px;
+
+  margin-bottom: 18px;
+}
+
+.card-venda-data {
+  color: #777;
+
+  font-size: 15px;
+}
+
+.card-venda-divisor {
+  width: 100%;
+  height: 1px;
+
+  margin-bottom: 18px;
+
+  background: #f0e1e6;
+}
+
+.card-venda-informacoes {
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  gap: 15px;
+}
+
+.card-venda-label {
+  display: block;
+
+  margin-bottom: 5px;
+
+  color: #777;
+
+  font-size: 15px;
+}
+
+.card-venda-valor {
+  display: block;
+
+  color: #222;
+
+  font-size: 20px;
+
+  font-weight: 700;
+}
+
+.card-venda-valor.rosa {
+  color: #ed4f89;
+}
+
+.card-venda-vencimento {
+  margin-top: 18px;
+
+  color: #707070;
+
+  font-size: 15px;
+}
+
+/* STATUS DA VENDA */
+
+.status-venda {
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  min-height: 31px;
+
+  padding: 6px 13px;
+
+  border-radius: 999px;
+
+  background: #fff0f5;
+
+  color: #ed4f89;
+
+  font-size: 12px;
+
+  font-weight: 700;
+
+  white-space: nowrap;
+}
+
+/* =========================================================
+   DETALHES DA VENDA
+   ========================================================= */
+
+.detalhes-venda {
+  width: 100%;
+}
+
+/* CARTÃO DO CLIENTE */
+
+.card-cliente-venda {
+  width: 100%;
+
+  padding: 28px 20px;
+
+  margin-bottom: 20px;
+
+  border-radius: 23px;
+
+  background: #ffffff;
+
+  text-align: center;
+
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.05);
+}
+
+.card-cliente-venda .label {
+  display: block;
+
+  margin-bottom: 10px;
+
+  color: #888;
+
+  font-size: 15px;
+}
+
+.card-cliente-venda .nome {
+  margin: 0;
+
+  color: #171717;
+
+  font-size: 23px;
+
+  font-weight: 700;
+}
+
+.card-cliente-venda .data {
+  margin: 14px 0 0;
+
+  color: #737373;
+
+  font-size: 16px;
+}
+
+/* TÍTULO DOS PRODUTOS */
+
+.detalhes-titulo {
+  margin: 0 0 15px;
+
+  color: #707070;
+
+  font-size: 18px;
+
+  font-weight: 600;
+}
+
+/* PRODUTO DENTRO DA VENDA */
+
+.card-produto-venda {
+  width: 100%;
+
+  padding: 25px 22px;
+
+  margin-bottom: 18px;
+
+  border-radius: 23px;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.05);
+}
+
+.produto-venda-nome {
+  margin: 0;
+
+  color: #171717;
+
+  font-size: 20px;
+
+  font-weight: 700;
+
+  text-align: center;
+}
+
+.produto-venda-quantidade {
+  margin: 12px 0 20px;
+
+  color: #737373;
+
+  font-size: 16px;
+
+  text-align: center;
+}
+
+.produto-venda-valores {
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  gap: 12px;
+
+  padding-top: 20px;
+
+  border-top: 1px solid #f0e1e6;
+}
+
+.produto-venda-valor {
+  text-align: center;
+}
+
+.produto-venda-valor-label {
+  display: block;
+
+  margin-bottom: 7px;
+
+  color: #888;
+
+  font-size: 14px;
+}
+
+.produto-venda-valor-total {
+  display: block;
+
+  color: #222;
+
+  font-size: 19px;
+
+  font-weight: 700;
+}
+
+.produto-venda-subtotal {
+  display: block;
+
+  color: #ed4f89;
+
+  font-size: 19px;
+
+  font-weight: 700;
+}
+
+/* PAGAMENTO */
+
+.card-pagamento {
+  width: 100%;
+
+  padding: 25px 22px;
+
+  margin-bottom: 18px;
+
+  border-radius: 23px;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.05);
+}
+
+.card-pagamento-titulo {
+  margin: 0 0 24px;
+
+  color: #171717;
+
+  font-size: 21px;
+
+  font-weight: 600;
+
+  text-align: center;
+}
+
+.pagamento-linha {
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 12px;
+
+  padding: 5px 0 19px;
+
+  color: #707070;
+
+  font-size: 16px;
+}
+
+.pagamento-valor {
+  color: #171717;
+
+  font-size: 19px;
+
+  font-weight: 700;
+
+  white-space: nowrap;
+}
+
+.pagamento-valor.verde {
+  color: #169253;
+}
+
+.pagamento-valor.rosa {
+  color: #ed4f89;
+}
+
+.pagamento-saldo {
+  margin-top: 1px;
+
+  padding-top: 19px;
+
+  border-top: 1px solid #f0e1e6;
+}
+
+/* VENCIMENTO */
+
+.card-vencimento {
+  width: 100%;
+
+  padding: 25px;
+
+  margin-bottom: 20px;
+
+  border-radius: 23px;
+
+  background: #fffafd;
+
+  border: 1px solid #f4cddd;
+
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.03);
+}
+
+.vencimento-conteudo {
+  display: flex;
+
+  align-items: flex-start;
+
+  justify-content: space-between;
+
+  gap: 15px;
+}
+
+.vencimento-label {
+  display: block;
+
+  margin-bottom: 9px;
+
+  color: #888;
+
+  font-size: 15px;
+}
+
+.vencimento-data {
+  display: block;
+
+  color: #171717;
+
+  font-size: 20px;
+
+  font-weight: 700;
+}
+
+/* BOTÃO VOLTAR */
+
+.botao-voltar {
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  width: 50px;
+  height: 50px;
+
+  flex-shrink: 0;
+
+  border: 0;
+
+  border-radius: 17px;
+
+  background: #fff0f5;
+
+  color: #ed4f89;
+
+  font-size: 24px;
+
+  cursor: pointer;
+
+  transition: 0.2s;
+}
+
+.botao-voltar:hover {
+  background: #ffe1eb;
+}
+
+.botao-voltar:active {
+  transform: scale(0.97);
+}
+
+/* CABEÇALHO DA TELA DE DETALHES */
+
+.topo-detalhes {
+  display: flex;
+
+  align-items: center;
+
+  gap: 14px;
+
+  padding: 24px 20px 18px;
+
+  background: #ffffff;
+}
+
+.topo-detalhes-conteudo {
+  min-width: 0;
+}
+
+.topo-detalhes .saudacao {
+  display: block;
+}
+
+.topo-detalhes h1 {
+  margin: 5px 0 0;
+
+  color: #333;
+
+  font-size: 25px;
+}
+
+/* ESTADO VAZIO */
+
+.vazio {
+  padding: 40px 22px;
+  text-align: center;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+}
+
+.vazio-icone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: #fff0f5;
+  font-size: 26px;
+}
+
+.vazio h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.vazio p {
+  max-width: 280px;
+  margin: 0 auto;
+  color: #999;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* NAVEGAÇÃO */
+
+.navegacao {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+
+  display: flex;
+  justify-content: space-around;
+
+  padding: 10px 8px calc(10px + env(safe-area-inset-bottom));
+
+  background: #ffffff;
+  border-top: 1px solid #f1e4e9;
+  box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.05);
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+
+  min-width: 58px;
+  border: 0;
+  background: transparent;
+
+  color: #999;
+  font-size: 11px;
+}
+
+.nav-item span {
+  font-size: 20px;
+}
+
+.nav-item.ativo {
+  color: #df5f8d;
+  font-weight: 600;
+}
+
+/* DESKTOP */
+
+@media (min-width: 768px) {
+  .topo {
+    padding: 28px 32px;
+  }
+
+  .conteudo {
+    padding: 24px 32px 140px;
+  }
+
+  .navegacao {
+    left: 50%;
+    width: 700px;
+    transform: translateX(-50%);
+    border-radius: 20px 20px 0 0;
+  }
+}
+
+/* =========================================================
+   MODAIS — CLIENTE E PRODUTO
+   ========================================================= */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background: rgba(40, 25, 32, 0.48);
+
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+
+  animation: aparecerOverlay 0.2s ease;
+}
+
+.modal {
+  width: 100%;
+  max-width: 540px;
+  max-height: 90vh;
+
+  overflow-y: auto;
+
+  padding: 30px;
+
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 26px;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 25px 70px rgba(50, 25, 38, 0.22);
+
+  animation: aparecerModal 0.22s ease-out;
+}
+
+/* ANIMAÇÕES */
+
+@keyframes aparecerOverlay {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes aparecerModal {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* CABEÇALHO DO MODAL */
+
+.modal-cabecalho {
+  display: flex;
+
+  align-items: flex-start;
+  justify-content: space-between;
+
+  gap: 20px;
+
+  margin-bottom: 28px;
+}
+
+.modal-cabecalho div {
+  display: flex;
+  flex-direction: column;
+
+  gap: 5px;
+}
+
+.modal-cabecalho h2 {
+  margin: 0;
+
+  color: #2f2b2e;
+
+  font-size: 26px;
+  font-weight: 700;
+
+  line-height: 1.15;
+  letter-spacing: -0.4px;
+}
+
+.modal-cabecalho p {
+  margin: 0;
+
+  color: #94878e;
+
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* BOTÃO FECHAR */
+
+.modal-fechar {
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  width: 42px;
+  height: 42px;
+
+  flex-shrink: 0;
+
+  border: none;
+  border-radius: 50%;
+
+  background: #fff0f5;
+
+  color: #df5f8d;
+
+  font-size: 21px;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.modal-fechar:hover {
+  background: #df5f8d;
+
+  color: #ffffff;
+
+  transform: rotate(5deg);
+}
+
+.modal-fechar:active {
+  transform: scale(0.95);
+}
+
+/* FORMULÁRIO */
+
+.formulario-produto {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 18px;
+}
+
+.formulario-produto label {
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 8px;
+
+  color: #51474d;
+
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* INPUT, TEXTAREA E SELECT */
+
+.formulario-produto input,
+.formulario-produto textarea,
+.formulario-produto select {
+  width: 100%;
+
+  border: 1px solid #e8dce2;
+
+  border-radius: 13px;
+
+  outline: none;
+
+  background: #fffafb;
+
+  color: #302a2f;
+
+  font-family: inherit;
+
+  font-size: 15px;
+  font-weight: 500;
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+/* INPUT */
+
+.formulario-produto input {
+  height: 52px;
+
+  padding: 0 15px;
+}
+
+/* TEXTAREA */
+
+.formulario-produto textarea {
+  min-height: 110px;
+
+  padding: 14px 15px;
+
+  resize: vertical;
+
+  line-height: 1.5;
+}
+
+/* SELECT */
+
+.formulario-produto select {
+  height: 52px;
+
+  padding: 0 15px;
+
+  cursor: pointer;
+}
+
+/* PLACEHOLDER */
+
+.formulario-produto input::placeholder,
+.formulario-produto textarea::placeholder {
+  color: #b9adb4;
+
+  opacity: 1;
+}
+
+/* FOCO */
+
+.formulario-produto input:focus,
+.formulario-produto textarea:focus,
+.formulario-produto select:focus {
+  border-color: #e96f9a;
+
+  background: #ffffff;
+
+  box-shadow:
+    0 0 0 4px rgba(233, 111, 154, 0.10);
+}
+
+/* CAMPOS DUPLOS */
+
+.formulario-duplo {
+  display: grid;
+
+  grid-template-columns: 1fr 1fr;
+
+  gap: 14px;
+}
+
+/* BOTÃO PRINCIPAL */
+
+.botao-salvar {
+  width: 100%;
+
+  min-height: 53px;
+
+  margin-top: 6px;
+
+  border: none;
+
+  border-radius: 14px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #e96f9a 0%,
+      #df5f8d 100%
+    );
+
+  color: #ffffff;
+
+  font-family: inherit;
+
+  font-size: 15px;
+
+  font-weight: 700;
+
+  cursor: pointer;
+
+  box-shadow:
+    0 8px 20px rgba(233, 111, 154, 0.25);
+
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+.botao-salvar:hover:not(:disabled) {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 11px 24px rgba(233, 111, 154, 0.30);
+
+  filter: brightness(1.02);
+}
+
+.botao-salvar:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.botao-salvar:disabled {
+  opacity: 0.65;
+
+  cursor: not-allowed;
+
+  transform: none;
+}
+
+/* SCROLL DO MODAL */
+
+.modal::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modal::-webkit-scrollbar-thumb {
+  background: #ead5de;
+
+  border-radius: 20px;
+}
+
+.modal::-webkit-scrollbar-thumb:hover {
+  background: #d8b8c5;
+}
+
+/* MOBILE */
+
+@media (max-width: 480px) {
+
+  .modal-overlay {
+    align-items: flex-end;
+
+    padding: 0;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: none;
+
+    max-height: 92vh;
+
+    padding: 25px 20px 30px;
+
+    border-radius:
+      26px
+      26px
+      0
+      0;
+  }
+
+  .modal-cabecalho {
+    margin-bottom: 24px;
+  }
+
+  .modal-cabecalho h2 {
+    font-size: 23px;
+  }
+
+  .modal-fechar {
+    width: 40px;
+    height: 40px;
+  }
+
+  .formulario-produto {
+    gap: 17px;
+  }
+
+  .formulario-duplo {
+    grid-template-columns: 1fr;
+
+    gap: 17px;
+  }
+
+  .formulario-produto input,
+  .formulario-produto select {
+    height: 51px;
+  }
+
+  .formulario-produto textarea {
+    min-height: 110px;
+  }
+
+  .botao-salvar {
+    min-height: 53px;
+  }
+
+  /*
+    Mais espaço inferior no celular para que
+    o último cartão da tela de detalhes não
+    fique escondido atrás da navegação.
+  */
+  .conteudo {
+    padding-bottom: 125px;
+  }
+
+  .card-venda {
+    padding: 22px 20px;
+  }
+
+  .card-cliente-venda {
+    padding: 26px 18px;
+  }
+
+  .card-cliente-venda .nome {
+    font-size: 21px;
+  }
+
+  .card-produto-venda,
+  .card-pagamento,
+  .card-vencimento {
+    padding: 23px 20px;
+  }
+
+  .produto-venda-valores {
+    gap: 8px;
+  }
+
+  .pagamento-linha {
+    gap: 10px;
+  }
+
+  .pagamento-valor {
+    font-size: 18px;
+  }
+
+  .vencimento-conteudo {
+    gap: 10px;
+  }
+}
