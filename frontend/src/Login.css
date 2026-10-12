@@ -1,0 +1,1441 @@
+* {
+
+  box-sizing: border-box;
+
+}
+
+
+
+.login-pagina {
+
+  min-height: 100vh;
+
+  width: 100%;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  padding: 32px 20px;
+
+  position: relative;
+
+  overflow: hidden;
+
+
+
+  background:
+
+    radial-gradient(
+
+      circle at 15% 20%,
+
+      rgba(225, 82, 137, 0.08),
+
+      transparent 28%
+
+    ),
+
+    radial-gradient(
+
+      circle at 85% 80%,
+
+      rgba(225, 82, 137, 0.07),
+
+      transparent 30%
+
+    ),
+
+    #fff5f8;
+
+}
+
+
+
+/* =========================================================
+
+   DECORAÇÕES
+
+   ========================================================= */
+
+
+
+.login-decoracao {
+
+  position: absolute;
+
+  border-radius: 50%;
+
+  pointer-events: none;
+
+}
+
+
+
+.login-decoracao-1 {
+
+  width: 260px;
+
+  height: 260px;
+
+  top: -150px;
+
+  left: -120px;
+
+  background: rgba(220, 76, 132, 0.08);
+
+}
+
+
+
+.login-decoracao-2 {
+
+  width: 300px;
+
+  height: 300px;
+
+  right: -170px;
+
+  bottom: -180px;
+
+  background: rgba(220, 76, 132, 0.07);
+
+}
+
+
+
+/* =========================================================
+
+   CARD
+
+   ========================================================= */
+
+
+
+.login-card {
+
+  width: 100%;
+
+  max-width: 538px;
+
+  min-height: 912px;
+
+
+
+  padding: 42px 40px 30px;
+
+
+
+  background: #ffffff;
+
+
+
+  border: 1px solid #f0dce3;
+
+  border-radius: 36px;
+
+
+
+  box-shadow:
+
+    0 18px 45px rgba(145, 48, 88, 0.07);
+
+
+
+  position: relative;
+
+  z-index: 2;
+
+}
+
+
+
+/* =========================================================
+
+   CABEÇALHO
+
+   ========================================================= */
+
+
+
+.login-cabecalho {
+
+  width: 100%;
+
+}
+
+
+
+.login-marca {
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 16px;
+
+}
+
+
+
+.login-logo-svg {
+  width: 64px;
+  height: 64px;
+  display: block;
+  flex: 0 0 64px;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 16px;
+}
+
+
+
+.login-marca-texto {
+
+  text-align: left;
+
+}
+
+
+
+.login-marca-texto h1 {
+
+  margin: 0;
+
+
+
+  color: #171323;
+
+
+
+  font-size: 31px;
+
+  line-height: 1.05;
+
+  font-weight: 700;
+
+  letter-spacing: -1px;
+
+}
+
+
+
+.login-marca-texto p {
+
+  margin: 7px 0 0;
+
+
+
+  color: #9b7f8d;
+
+
+
+  font-size: 13px;
+
+  line-height: 1.3;
+
+  font-weight: 400;
+
+}
+
+
+
+/* =========================================================
+
+   INTRODUÇÃO
+
+   ========================================================= */
+
+
+
+.login-introducao {
+
+  margin-top: 48px;
+
+  text-align: center;
+
+}
+
+
+
+.login-introducao h2 {
+
+  margin: 0;
+
+
+
+  color: #171323;
+
+
+
+  font-size: 29px;
+
+  line-height: 1.2;
+
+  font-weight: 700;
+
+  letter-spacing: -0.7px;
+
+}
+
+
+
+.login-introducao p {
+
+  margin: 9px 0 0;
+
+
+
+  color: #947b89;
+
+
+
+  font-size: 17px;
+
+  line-height: 1.45;
+
+}
+
+
+
+/* =========================================================
+
+   FORMULÁRIO
+
+   ========================================================= */
+
+
+
+.login-formulario {
+
+  margin-top: 40px;
+
+}
+
+
+
+.login-grupo {
+
+  margin-bottom: 28px;
+
+}
+
+
+
+.login-grupo label {
+
+  display: block;
+
+
+
+  margin: 0 0 15px;
+
+  padding-left: 1px;
+
+
+
+  color: #30252d;
+
+
+
+  font-size: 16px;
+
+  line-height: 1.2;
+
+  font-weight: 700;
+
+}
+
+
+
+/* =========================================================
+
+   INPUT
+
+   ========================================================= */
+
+
+
+.login-input-wrapper {
+
+  width: 100%;
+
+  height: 65px;
+
+
+
+  display: flex;
+
+  align-items: center;
+
+
+
+  position: relative;
+
+
+
+  border: 1px solid #ead7df;
+
+  border-radius: 17px;
+
+
+
+  background: #ffffff;
+
+
+
+  transition:
+
+    border-color 0.2s ease,
+
+    box-shadow 0.2s ease;
+
+}
+
+
+
+.login-input-wrapper:focus-within {
+
+  border-color: #d95386;
+
+
+
+  box-shadow:
+
+    0 0 0 4px rgba(217, 83, 134, 0.08);
+
+}
+
+
+
+.login-icone {
+
+  width: 56px;
+
+
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+
+
+  flex-shrink: 0;
+
+}
+
+
+
+.login-icone svg {
+
+  width: 22px;
+
+  height: 22px;
+
+
+
+  fill: none;
+
+
+
+  stroke: #a68e9a;
+
+  stroke-width: 1.7;
+
+  stroke-linecap: round;
+
+  stroke-linejoin: round;
+
+}
+
+
+
+.login-input-wrapper input {
+
+  width: 100%;
+
+  height: 100%;
+
+
+
+  padding: 0 16px 0 0;
+
+
+
+  border: 0;
+
+  outline: none;
+
+
+
+  background: transparent;
+
+
+
+  color: #30252d;
+
+
+
+  font-family: inherit;
+
+  font-size: 17px;
+
+}
+
+
+
+.login-input-wrapper input::placeholder {
+
+  color: #b9a5ae;
+
+  opacity: 1;
+
+}
+
+
+
+/* =========================================================
+
+   MOSTRAR SENHA
+
+   ========================================================= */
+
+
+
+.login-mostrar-senha {
+
+  width: 54px;
+
+  height: 100%;
+
+
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+
+
+  flex-shrink: 0;
+
+
+
+  padding: 0;
+
+
+
+  border: 0;
+
+  background: transparent;
+
+
+
+  cursor: pointer;
+
+}
+
+
+
+.login-mostrar-senha svg {
+
+  width: 21px;
+
+  height: 21px;
+
+
+
+  fill: none;
+
+
+
+  stroke: #a18c96;
+
+  stroke-width: 1.7;
+
+  stroke-linecap: round;
+
+  stroke-linejoin: round;
+
+}
+
+
+
+.login-mostrar-senha:hover svg {
+
+  stroke: #d95386;
+
+}
+
+
+
+/* =========================================================
+
+   OPÇÕES
+
+   ========================================================= */
+
+
+
+.login-opcoes {
+
+  min-height: 22px;
+
+
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+
+
+  gap: 15px;
+
+
+
+  margin-top: -5px;
+
+  margin-bottom: 30px;
+
+}
+
+
+
+.login-checkbox {
+
+  display: inline-flex;
+
+  align-items: center;
+
+
+
+  gap: 10px;
+
+
+
+  color: #806d77;
+
+
+
+  font-size: 14px;
+
+
+
+  cursor: pointer;
+
+}
+
+
+
+.login-checkbox input {
+
+  position: absolute;
+
+  opacity: 0;
+
+  pointer-events: none;
+
+}
+
+
+
+.login-checkbox-caixa {
+
+  width: 19px;
+
+  height: 19px;
+
+
+
+  display: inline-flex;
+
+
+
+  align-items: center;
+
+  justify-content: center;
+
+
+
+  border: 1px solid #d8c6ce;
+
+  border-radius: 3px;
+
+
+
+  background: #ffffff;
+
+
+
+  transition:
+
+    background 0.2s ease,
+
+    border-color 0.2s ease;
+
+}
+
+
+
+.login-checkbox input:checked + .login-checkbox-caixa {
+
+  border-color: #d95386;
+
+  background: #d95386;
+
+}
+
+
+
+.login-checkbox input:checked + .login-checkbox-caixa::after {
+
+  content: '';
+
+
+
+  width: 5px;
+
+  height: 9px;
+
+
+
+  border-right: 2px solid #ffffff;
+
+  border-bottom: 2px solid #ffffff;
+
+
+
+  transform: rotate(45deg) translate(-1px, -1px);
+
+}
+
+
+
+.login-link {
+
+  padding: 0;
+
+
+
+  border: 0;
+
+  background: transparent;
+
+
+
+  color: #db5185;
+
+
+
+  font-family: inherit;
+
+  font-size: 14px;
+
+  font-weight: 700;
+
+
+
+  cursor: pointer;
+
+}
+
+
+
+.login-link:hover {
+
+  color: #bd3f6d;
+
+  text-decoration: underline;
+
+}
+
+
+
+/* =========================================================
+
+   BOTÃO ENTRAR
+
+   ========================================================= */
+
+
+
+.login-botao-entrar {
+
+  width: 100%;
+
+  height: 66px;
+
+
+
+  border: 0;
+
+  border-radius: 17px;
+
+
+
+  background: linear-gradient(
+
+    135deg,
+
+    #df5c8c 0%,
+
+    #d34d7f 100%
+
+  );
+
+
+
+  color: #ffffff;
+
+
+
+  font-family: inherit;
+
+  font-size: 18px;
+
+  font-weight: 700;
+
+
+
+  cursor: pointer;
+
+
+
+  box-shadow:
+
+    0 15px 28px rgba(211, 77, 127, 0.20);
+
+
+
+  transition:
+
+    transform 0.18s ease,
+
+    box-shadow 0.18s ease,
+
+    filter 0.18s ease;
+
+}
+
+
+
+.login-botao-entrar:hover {
+
+  transform: translateY(-1px);
+
+
+
+  box-shadow:
+
+    0 18px 32px rgba(211, 77, 127, 0.25);
+
+
+
+  filter: brightness(1.02);
+
+}
+
+
+
+.login-botao-entrar:active {
+
+  transform: translateY(0);
+
+}
+
+
+
+/* =========================================================
+
+   DIVISOR
+
+   ========================================================= */
+
+
+
+.login-divisor {
+
+  width: 100%;
+
+
+
+  display: flex;
+
+  align-items: center;
+
+
+
+  gap: 15px;
+
+
+
+  margin: 39px 0 32px;
+
+}
+
+
+
+.login-divisor span {
+
+  flex: 1;
+
+
+
+  height: 1px;
+
+
+
+  background: #eadde2;
+
+}
+
+
+
+.login-divisor strong {
+
+  color: #b19da6;
+
+
+
+  font-size: 14px;
+
+  font-weight: 500;
+
+}
+
+
+
+/* =========================================================
+
+   GOOGLE
+
+   ========================================================= */
+
+
+
+.login-google {
+
+  width: 100%;
+
+  height: 64px;
+
+
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+
+
+  gap: 17px;
+
+
+
+  border: 1px solid #ead7df;
+
+  border-radius: 17px;
+
+
+
+  background: #ffffff;
+
+
+
+  color: #2c2228;
+
+
+
+  font-family: inherit;
+
+  font-size: 16px;
+
+  font-weight: 700;
+
+
+
+  cursor: pointer;
+
+
+
+  transition:
+
+    border-color 0.2s ease,
+
+    background 0.2s ease,
+
+    transform 0.2s ease;
+
+}
+
+
+
+.login-google:hover {
+
+  border-color: #d9bec9;
+
+  background: #fffafb;
+
+  transform: translateY(-1px);
+
+}
+
+
+
+.login-google-logo {
+
+  font-family: Arial, sans-serif;
+
+
+
+  font-size: 22px;
+
+  font-weight: 800;
+
+
+
+  color: #4285f4;
+
+}
+
+
+
+/* =========================================================
+
+   CRIAR CONTA
+
+   ========================================================= */
+
+
+
+.login-criar-conta {
+
+  margin-top: 35px;
+
+
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+
+
+  flex-wrap: wrap;
+
+
+
+  gap: 5px;
+
+
+
+  color: #927d87;
+
+
+
+  font-size: 14px;
+
+  line-height: 1.5;
+
+
+
+  text-align: center;
+
+}
+
+
+
+.login-criar-conta button {
+
+  padding: 0;
+
+
+
+  border: 0;
+
+  background: transparent;
+
+
+
+  color: #da5285;
+
+
+
+  font-family: inherit;
+
+  font-size: 14px;
+
+  font-weight: 700;
+
+
+
+  cursor: pointer;
+
+}
+
+
+
+.login-criar-conta button:hover {
+
+  color: #bd3f6d;
+
+  text-decoration: underline;
+
+}
+
+
+
+/* =========================================================
+
+   RODAPÉ
+
+   ========================================================= */
+
+
+
+.login-rodape {
+
+  margin-top: 34px;
+
+
+
+  color: #b29da7;
+
+
+
+  font-size: 12px;
+
+  line-height: 1.4;
+
+
+
+  text-align: center;
+
+}
+
+
+
+/* =========================================================
+
+   RESPONSIVO
+
+   ========================================================= */
+
+
+
+@media (max-width: 600px) {
+
+  .login-pagina {
+
+    min-height: 100dvh;
+
+
+
+    padding: 18px 12px;
+
+  }
+
+
+
+  .login-card {
+
+    min-height: auto;
+
+
+
+    padding: 34px 25px 27px;
+
+
+
+    border-radius: 28px;
+
+  }
+
+
+
+  .login-marca {
+
+    gap: 13px;
+
+  }
+
+
+
+  .login-logo-svg {
+    width: 125px;
+    height: 56px;
+    object-fit: contain;
+  }
+
+
+
+  .login-marca-texto h1 {
+
+    font-size: 27px;
+
+  }
+
+
+
+  .login-marca-texto p {
+
+    font-size: 11px;
+
+  }
+
+
+
+  .login-introducao {
+
+    margin-top: 38px;
+
+  }
+
+
+
+  .login-introducao h2 {
+
+    font-size: 25px;
+
+  }
+
+
+
+  .login-introducao p {
+
+    font-size: 15px;
+
+  }
+
+
+
+  .login-formulario {
+
+    margin-top: 34px;
+
+  }
+
+
+
+  .login-grupo {
+
+    margin-bottom: 24px;
+
+  }
+
+
+
+  .login-input-wrapper {
+
+    height: 60px;
+
+
+
+    border-radius: 15px;
+
+  }
+
+
+
+  .login-input-wrapper input {
+
+    font-size: 16px;
+
+  }
+
+
+
+  .login-opcoes {
+
+    align-items: flex-start;
+
+  }
+
+
+
+  .login-checkbox {
+
+    font-size: 13px;
+
+  }
+
+
+
+  .login-link {
+
+    font-size: 13px;
+
+  }
+
+
+
+  .login-botao-entrar {
+
+    height: 61px;
+
+  }
+
+
+
+  .login-divisor {
+
+    margin: 32px 0 27px;
+
+  }
+
+
+
+  .login-google {
+
+    height: 60px;
+
+  }
+
+
+
+  .login-criar-conta {
+
+    margin-top: 29px;
+
+  }
+
+
+
+  .login-rodape {
+
+    margin-top: 29px;
+
+  }
+
+}
+
+
+
+@media (max-width: 390px) {
+
+  .login-card {
+
+    padding-left: 20px;
+
+    padding-right: 20px;
+
+  }
+
+
+
+  .login-marca {
+
+    gap: 10px;
+
+  }
+
+
+
+  .login-logo-svg {
+    width: 112px;
+    height: 52px;
+    object-fit: contain;
+  }
+
+
+
+  .login-marca-texto h1 {
+
+    font-size: 25px;
+
+  }
+
+
+
+  .login-marca-texto p {
+
+    font-size: 10px;
+
+  }
+
+
+
+  .login-introducao h2 {
+
+    font-size: 23px;
+
+  }
+
+
+
+  .login-opcoes {
+
+    flex-direction: column;
+
+    align-items: stretch;
+
+    gap: 13px;
+
+  }
+
+
+
+  .login-link {
+
+    align-self: flex-end;
+
+  }
+
+}
+
+/* Logo compacto ao lado do nome: limita a imagem mesmo se a classe mudar */
+.login-cabecalho .login-marca {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.login-cabecalho .login-marca img,
+.login-cabecalho .login-marca svg,
+.login-cabecalho .login-marca .login-logo-svg {
+  display: block !important;
+  width: 100px !important;
+  height: 100px !important;
+  min-width: 100px !important;
+  min-height: 100px !important;
+  max-width: 100px !important;
+  max-height: 100px !important;
+  flex: 0 0 100px !important;
+  object-fit: contain !important;
+  object-position: center;
+  border-radius: 0 !important;
+}
+
+.login-cabecalho .login-marca .login-marca-texto {
+  display: block !important;
+  min-width: 0;
+  text-align: left;
+}
+
+@media (max-width: 600px) {
+  .login-cabecalho .login-marca img,
+  .login-cabecalho .login-marca svg,
+  .login-cabecalho .login-marca .login-logo-svg {
+    width: 100px !important;
+    height: 100px !important;
+    min-width: 100px !important;
+    min-height: 100px !important;
+    max-width: 100px !important;
+    max-height: 100px !important;
+    flex-basis: 100px !important;
+  }
+}

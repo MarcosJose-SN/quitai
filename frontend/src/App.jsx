@@ -1,8 +1,39 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import Login from './Login'
 
 function App() {
+  const [autenticado, setAutenticado] = useState(() => {
+    return Boolean(
+      localStorage.getItem('quitai_token') ||
+      sessionStorage.getItem('quitai_token')
+    )
+  })
+  const [validandoSessao, setValidandoSessao] = useState(() => {
+    return Boolean(
+      localStorage.getItem('quitai_token') ||
+      sessionStorage.getItem('quitai_token')
+    )
+  })
   const [tela, setTela] = useState('inicio')
+  const [notificacoesAbertas, setNotificacoesAbertas] = useState(false)
+  const [notificacoesLidas, setNotificacoesLidas] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('quitai_notificacoes_lidas') || '[]') } catch { return [] }
+  })
+  const [subTelaMais, setSubTelaMais] = useState('menu')
+  const [confirmarSaida, setConfirmarSaida] = useState(() => {
+    return localStorage.getItem('quitai_confirmar_saida') !== 'false'
+  })
+  const [mostrarModalSaida, setMostrarModalSaida] = useState(false)
+
+  const usuarioSalvo = (() => {
+    try {
+      const salvo = localStorage.getItem('quitai_usuario') || sessionStorage.getItem('quitai_usuario')
+      return salvo ? JSON.parse(salvo) : {}
+    } catch {
+      return {}
+    }
+  })()
 
   // =========================================================
   // PRODUTOS
@@ -12,6 +43,7 @@ function App() {
   const [produtoEditandoId, setProdutoEditandoId] = useState(null)
   const [produtoParaExcluir, setProdutoParaExcluir] = useState(null)
   const [excluindoProduto, setExcluindoProduto] = useState(false)
+  const [erroExclusaoProduto, setErroExclusaoProduto] = useState('')
 
   const [produtos, setProdutos] = useState([])
   const [carregandoProdutos, setCarregandoProdutos] = useState(false)
@@ -43,6 +75,7 @@ function App() {
   const [clienteEditandoId, setClienteEditandoId] = useState(null)
   const [clienteExcluindo, setClienteExcluindo] = useState(null)
   const [excluindoCliente, setExcluindoCliente] = useState(false)
+  const [erroExclusaoCliente, setErroExclusaoCliente] = useState('')
 
   const [formularioCliente, setFormularioCliente] = useState({
     nome: '',
@@ -95,6 +128,9 @@ function App() {
   const [carregandoDetalhesVenda, setCarregandoDetalhesVenda] =
     useState(false)
   const [erroDetalhesVenda, setErroDetalhesVenda] = useState('')
+  const [vendaParaExcluir, setVendaParaExcluir] = useState(null)
+  const [excluindoVenda, setExcluindoVenda] = useState(false)
+  const [erroExclusaoVenda, setErroExclusaoVenda] = useState('')
 
   // =========================================================
   // PAGAMENTOS
@@ -119,10 +155,99 @@ function App() {
   const [erroPagamento, setErroPagamento] = useState('')
 
   // =========================================================
+  // VALIDAR SESSÃO COM O BACKEND
+  // =========================================================
+
+  useEffect(() => {
+    const token =
+      localStorage.getItem('quitai_token') ||
+      sessionStorage.getItem('quitai_token')
+
+    if (!token) {
+      setAutenticado(false)
+      setValidandoSessao(false)
+      return
+    }
+
+    let ativo = true
+
+    async function validarSessao() {
+      try {
+        const resposta = await fetch(
+          'http://localhost:8082/auth/me',
+          {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        )
+
+        if (resposta.status === 401 || resposta.status === 403) {
+          localStorage.removeItem('quitai_token')
+          localStorage.removeItem('quitai_usuario')
+          sessionStorage.removeItem('quitai_token')
+          sessionStorage.removeItem('quitai_usuario')
+
+          if (ativo) {
+            setAutenticado(false)
+          }
+
+          return
+        }
+
+        if (!resposta.ok) {
+          throw new Error('Não foi possível validar a sessão no momento.')
+        }
+
+        if (ativo) {
+          setAutenticado(true)
+        }
+      } catch (error) {
+        // Uma falha de conexão não apaga o token salvo.
+        console.error('Erro ao validar sessão:', error)
+      } finally {
+        if (ativo) {
+          setValidandoSessao(false)
+        }
+      }
+    }
+
+    validarSessao()
+
+    return () => {
+      ativo = false
+    }
+  }, [])
+
+  function sairDaConta() {
+    if (confirmarSaida) {
+      setMostrarModalSaida(true)
+      return
+    }
+
+    confirmarSaidaDaConta()
+  }
+
+  function confirmarSaidaDaConta() {
+    localStorage.removeItem('quitai_token')
+    localStorage.removeItem('quitai_usuario')
+    sessionStorage.removeItem('quitai_token')
+    sessionStorage.removeItem('quitai_usuario')
+    setMostrarModalSaida(false)
+    setAutenticado(false)
+    setTela('inicio')
+  }
+
+  // =========================================================
   // CARREGAR DADOS CONFORME A TELA
   // =========================================================
 
   useEffect(() => {
+    if (!autenticado || validandoSessao) {
+      return
+    }
+
     if (tela === 'inicio' || tela === 'vendas') {
       buscarVendas()
     }
@@ -134,7 +259,7 @@ function App() {
     if (tela === 'clientes') {
       buscarClientes()
     }
-  }, [tela])
+  }, [tela, autenticado, validandoSessao])
 
   // =========================================================
   // PRODUTOS - BUSCAR
@@ -752,6 +877,48 @@ function App() {
   }
 
   // =========================================================
+  // VENDAS - EXCLUIR COM CONFIRMAÇÃO
+  // =========================================================
+
+  function abrirConfirmacaoExcluirVenda() {
+    if (!vendaSelecionada?.venda) return
+    setErroExclusaoVenda('')
+    setVendaParaExcluir(vendaSelecionada.venda)
+  }
+
+  function fecharConfirmacaoExcluirVenda() {
+    if (excluindoVenda) return
+    setVendaParaExcluir(null)
+    setErroExclusaoVenda('')
+  }
+
+  async function confirmarExclusaoVenda() {
+    if (!vendaParaExcluir) return
+
+    try {
+      setExcluindoVenda(true)
+      setErroExclusaoVenda('')
+      const resposta = await fetch(`http://localhost:8082/vendas/${vendaParaExcluir.id}`, { method: 'DELETE' })
+      if (!resposta.ok) {
+        const mensagem = await resposta.text()
+        throw new Error(mensagem || 'Não foi possível excluir esta venda.')
+      }
+
+      setVendaParaExcluir(null)
+      setVendaSelecionada(null)
+      setPagamentosVenda([])
+      setErroDetalhesVenda('')
+      setTela('vendas')
+      await buscarVendas()
+    } catch (error) {
+      console.error('Erro ao excluir venda:', error)
+      setErroExclusaoVenda(error?.message || 'Não foi possível excluir esta venda. Nenhuma alteração foi confirmada.')
+    } finally {
+      setExcluindoVenda(false)
+    }
+  }
+
+  // =========================================================
   // PAGAMENTOS - FORMULÁRIO
   // =========================================================
 
@@ -1161,6 +1328,7 @@ function App() {
   // =========================================================
 
   function abrirExclusaoProduto(produto) {
+    setErroExclusaoProduto('')
     setProdutoParaExcluir(produto)
   }
 
@@ -1170,6 +1338,7 @@ function App() {
     }
 
     setProdutoParaExcluir(null)
+    setErroExclusaoProduto('')
   }
 
   // =========================================================
@@ -1216,9 +1385,22 @@ function App() {
         error
       )
 
-      setErroProdutos(
-        'Não foi possível excluir o produto.'
-      )
+      const mensagem = error?.message || ''
+      const detalhe = mensagem.toLowerCase()
+      const possuiVinculo = detalhe.includes('vinculad') ||
+        detalhe.includes('venda cadastrada') ||
+        detalhe.includes('preservar o histórico') ||
+        detalhe.includes('foreign key') ||
+        detalhe.includes('constraint') ||
+        detalhe.includes('23503') ||
+        detalhe.includes('violates')
+
+      const mensagemAmigavel = possuiVinculo
+        ? 'Este produto está vinculado a uma ou mais vendas cadastradas. Para preservar o histórico dos produtos vendidos e dos pagamentos, a exclusão foi bloqueada. Você pode manter o cadastro e continuar consultando essas vendas.'
+        : 'Não foi possível excluir este produto neste momento. Tente novamente. Se o problema continuar, entre em contato com o suporte.'
+
+      setErroProdutos('')
+      setErroExclusaoProduto(mensagemAmigavel)
     } finally {
       setExcluindoProduto(false)
     }
@@ -1418,6 +1600,7 @@ function App() {
   function abrirConfirmacaoExcluirCliente(
     cliente
   ) {
+    setErroExclusaoCliente('')
     setClienteExcluindo(cliente)
   }
 
@@ -1427,6 +1610,7 @@ function App() {
     }
 
     setClienteExcluindo(null)
+    setErroExclusaoCliente('')
   }
 
   // =========================================================
@@ -1450,13 +1634,10 @@ function App() {
       )
 
       if (!resposta.ok) {
-        const mensagem =
-          await resposta.text()
-
-        throw new Error(
-          mensagem ||
-            'Erro ao excluir cliente'
-        )
+        const mensagem = await resposta.text()
+        const erro = new Error(mensagem || 'Erro ao excluir cliente')
+        erro.status = resposta.status
+        throw erro
       }
 
       console.log(
@@ -1473,9 +1654,24 @@ function App() {
         error
       )
 
-      setErroClientes(
-        'Não foi possível excluir o cliente.'
-      )
+      const mensagem = error?.message || ''
+      const detalhe = mensagem.toLowerCase()
+      const possuiVinculo = detalhe.includes('vinculad') ||
+        detalhe.includes('venda cadastrada') ||
+        detalhe.includes('preservar o histórico') ||
+        detalhe.includes('foreign key') ||
+        detalhe.includes('constraint') ||
+        detalhe.includes('23503') ||
+        detalhe.includes('violates') ||
+        error?.status === 409 ||
+        error?.status === 500
+
+      const mensagemAmigavel = possuiVinculo
+        ? 'Este cliente possui uma ou mais vendas cadastradas. Para preservar o histórico de compras e pagamentos, a exclusão foi bloqueada. Mantenha o cadastro para continuar consultando as vendas e os pagamentos relacionados.'
+        : 'Não foi possível excluir este cliente neste momento. Tente novamente. Se o problema continuar, entre em contato com o suporte.'
+
+      setErroClientes('')
+      setErroExclusaoCliente(mensagemAmigavel)
     } finally {
       setExcluindoCliente(false)
     }
@@ -1514,6 +1710,29 @@ function App() {
     const [ano, mes, dia] = partes
 
     return `${dia}/${mes}/${ano}`
+  }
+
+  function obterNotificacoes() {
+    return vendas
+      .filter((venda) => ['VENCIDO', 'VENCE_EM_BREVE'].includes(String(venda.status || '').toUpperCase()))
+      .map((venda) => {
+        const vencido = String(venda.status || '').toUpperCase() === 'VENCIDO'
+        const id = `${venda.id || venda.venda_id || 'venda'}-${venda.status}-${venda.vencimento || ''}`
+        return {
+          id,
+          titulo: vencido ? 'Pagamento em atraso' : 'Vencimento próximo',
+          mensagem: `${venda.cliente_nome || venda.nome_cliente || venda.cliente || 'Cliente'} · vencimento ${formatarData(venda.vencimento)}`,
+          valor: venda.saldo ?? venda.total ?? venda.valor_total,
+          vencido,
+        }
+      })
+  }
+
+  function abrirNotificacoes() {
+    setNotificacoesAbertas(true)
+    const ids = obterNotificacoes().map((item) => item.id)
+    setNotificacoesLidas(ids)
+    localStorage.setItem('quitai_notificacoes_lidas', JSON.stringify(ids))
   }
 
   function obterStatusVenda(status) {
@@ -1614,8 +1833,178 @@ function App() {
       )
     : 0
 
+  if (validandoSessao) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          background: '#fff7fa',
+          color: '#df5f8d',
+          fontFamily: 'inherit',
+          fontWeight: 600,
+        }}
+      >
+        Verificando sua sessão...
+      </div>
+    )
+  }
+
+  if (!autenticado) {
+    return (
+      <Login
+        onLogin={() => setAutenticado(true)}
+      />
+    )
+  }
+
   return (
     <div className="app">
+      {mostrarModalSaida && (
+        <div
+          onClick={() => setMostrarModalSaida(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 20000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+            background: 'rgba(48, 30, 41, 0.48)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-modal-saida"
+            onClick={(evento) => evento.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '390px',
+              boxSizing: 'border-box',
+              padding: '28px 24px 22px',
+              borderRadius: '24px',
+              background: '#ffffff',
+              border: '1px solid #f5dce7',
+              boxShadow: '0 24px 80px rgba(70, 28, 50, 0.24)',
+              textAlign: 'center',
+              fontFamily: 'inherit',
+              animation: 'quitaiModalEntrada 180ms ease-out',
+            }}
+          >
+            <div
+              aria-hidden="true"
+              style={{
+                width: '64px',
+                height: '64px',
+                margin: '0 auto 16px',
+                display: 'grid',
+                placeItems: 'center',
+                borderRadius: '20px',
+                background: '#fff0f6',
+                color: '#c43f6d',
+                fontSize: '29px',
+              }}
+            >
+              ↪
+            </div>
+            <h2
+              id="titulo-modal-saida"
+              style={{
+                margin: '0 0 10px',
+                color: '#30242c',
+                fontSize: '22px',
+                lineHeight: 1.3,
+                fontWeight: 750,
+              }}
+            >
+              Sair da sua conta?
+            </h2>
+            <p
+              style={{
+                margin: '0 auto 24px',
+                maxWidth: '300px',
+                color: '#81717b',
+                fontSize: '14px',
+                lineHeight: 1.65,
+              }}
+            >
+              Tem certeza de que deseja sair do QuitaAí? Você precisará entrar novamente para acessar sua conta.
+            </p>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setMostrarModalSaida(false)}
+                style={{
+                  flex: 1,
+                  minHeight: '46px',
+                  padding: '12px 14px',
+                  borderRadius: '13px',
+                  border: '1px solid #eadde4',
+                  background: '#ffffff',
+                  color: '#6d5c66',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarSaidaDaConta}
+                style={{
+                  flex: 1,
+                  minHeight: '46px',
+                  padding: '12px 14px',
+                  borderRadius: '13px',
+                  border: '1px solid #c43f6d',
+                  background: 'linear-gradient(135deg, #e94b91, #c43f6d)',
+                  color: '#ffffff',
+                  fontSize: '14px',
+                  fontWeight: 700,
+                  boxShadow: '0 7px 16px rgba(196, 63, 109, 0.2)',
+                  cursor: 'pointer',
+                }}
+              >
+                Sim, sair
+              </button>
+            </div>
+          </section>
+          <style>{`
+            @keyframes quitaiModalEntrada {
+              from { opacity: 0; transform: translateY(8px) scale(0.98); }
+              to { opacity: 1; transform: translateY(0) scale(1); }
+            }
+          `}</style>
+        </div>
+      )}
+      {notificacoesAbertas && (
+        <div onClick={() => setNotificacoesAbertas(false)} style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(54, 24, 41, .38)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 'clamp(18px, 6vh, 58px) 16px 20px', overflowY: 'auto' }}>
+          <section onClick={(evento) => evento.stopPropagation()} role="dialog" aria-modal="true" aria-label="Central de notificações" style={{ width: '100%', maxWidth: '470px', background: '#fff', borderRadius: '24px', boxShadow: '0 22px 70px rgba(79, 30, 56, .24)', overflow: 'hidden', border: '1px solid #f6d8e6' }}>
+            <div style={{ padding: '22px 22px 18px', background: 'linear-gradient(135deg, #fff1f7, #fff)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', borderBottom: '1px solid #f7e2ec' }}>
+              <div><span style={{ fontSize: '12px', fontWeight: 700, color: '#d72d86', letterSpacing: '1.1px', textTransform: 'uppercase' }}>Quita! · Central de avisos</span><h2 style={{ margin: '6px 0 0', color: '#33252e', fontSize: '23px' }}>Notificações</h2></div>
+              <button type="button" onClick={() => setNotificacoesAbertas(false)} aria-label="Fechar notificações" style={{ border: 0, background: '#ffe3f0', color: '#bb2b70', width: '38px', height: '38px', borderRadius: '50%', fontSize: '22px', cursor: 'pointer' }}>×</button>
+            </div>
+            <div style={{ padding: '18px', display: 'grid', gap: '10px' }}>
+              {obterNotificacoes().length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '26px 12px 30px' }}><div style={{ margin: '0 auto 12px', width: '58px', height: '58px', display: 'grid', placeItems: 'center', borderRadius: '50%', background: '#fff0f7', fontSize: '27px' }}>💗</div><strong style={{ display: 'block', color: '#43313b', fontSize: '16px' }}>Tudo em dia por aqui!</strong><p style={{ margin: '7px 0 0', color: '#847580', fontSize: '14px', lineHeight: 1.5 }}>Quando houver pagamentos atrasados ou vencimentos próximos, os avisos aparecerão aqui.</p></div>
+              ) : obterNotificacoes().map((item) => (
+                <button key={item.id} type="button" onClick={() => { setNotificacoesAbertas(false); setTela('vendas'); setAbaVendas('abertas') }} style={{ width: '100%', textAlign: 'left', display: 'flex', gap: '12px', alignItems: 'flex-start', padding: '14px', borderRadius: '16px', border: `1px solid ${item.vencido ? '#f5c9cd' : '#f5dfad'}`, background: item.vencido ? '#fff5f5' : '#fffbef', cursor: 'pointer', color: '#3d3038' }}>
+                  <span style={{ width: '38px', height: '38px', borderRadius: '12px', display: 'grid', placeItems: 'center', flexShrink: 0, background: item.vencido ? '#ffe2e4' : '#fff0c7', fontSize: '19px' }}>{item.vencido ? '⚠️' : '🗓️'}</span>
+                  <span style={{ flex: 1 }}><strong style={{ display: 'block', fontSize: '14px', marginBottom: '4px' }}>{item.titulo}</strong><span style={{ display: 'block', color: '#766670', fontSize: '13px', lineHeight: 1.45 }}>{item.mensagem}</span>{item.valor != null && <span style={{ display: 'block', color: item.vencido ? '#c13d4b' : '#a36b00', fontWeight: 700, fontSize: '13px', marginTop: '6px' }}>Saldo: R$ {formatarMoeda(item.valor)}</span>}</span>
+                </button>
+              ))}
+            </div>
+            <div style={{ padding: '0 18px 18px' }}><button type="button" onClick={() => setNotificacoesAbertas(false)} style={{ width: '100%', border: 0, borderRadius: '13px', padding: '13px', background: '#e92e8b', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Entendi</button></div>
+          </section>
+        </div>
+      )}
 
       {/* =====================================================
           INÍCIO
@@ -1625,21 +2014,90 @@ function App() {
         <>
           <header className="topo">
 
-            <div>
-              <span className="saudacao">
-                Olá! 👋
-              </span>
+<div
+  className="topo-marca"
+  style={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: '20px',
+    minWidth: 0,
+  }}
+>
+  <img
+    src="/quitai-logo-horizontal.svg"
+    alt="Quitaí"
+    style={{
+      display: 'block',
+      width: '132px',
+      height: 'auto',
+      maxHeight: '58px',
+      objectFit: 'contain',
+      flexShrink: 0,
+    }}
+  />
 
-              <h1>
-                Minhas Vendas
-              </h1>
-            </div>
+  <div
+    aria-hidden="true"
+    style={{
+      width: '1px',
+      height: '42px',
+      background: '#F3DCE7',
+      flexShrink: 0,
+    }}
+  />
+
+  <div style={{ minWidth: 0 }}>
+    <span
+      className="saudacao"
+      style={{
+        display: 'block',
+        marginBottom: '3px',
+        color: '#927C87',
+        fontSize: '12px',
+        fontWeight: 500,
+      }}
+    >
+      Olá! 👋
+    </span>
+
+    <h1
+      style={{
+        margin: 0,
+        color: '#30242C',
+        fontSize: '26px',
+        fontWeight: 700,
+        letterSpacing: '-0.7px',
+        lineHeight: 1.25,
+      }}
+    >
+      Minhas Vendas
+    </h1>
+
+    <p
+      style={{
+        margin: '4px 0 0',
+        color: '#C43F82',
+        fontSize: '12px',
+        fontWeight: 500,
+        lineHeight: 1.4,
+      }}
+    >
+      Seus recebimentos em ordem
+    </p>
+  </div>
+</div>
+
 
             <button
               className="botao-notificacao"
               type="button"
+              onClick={abrirNotificacoes}
+              aria-label="Abrir notificações"
+              title="Notificações"
+              style={{ position: 'relative' }}
             >
               🔔
+              {obterNotificacoes().filter((item) => !notificacoesLidas.includes(item.id)).length > 0 && <span style={{ position: 'absolute', top: '-3px', right: '-3px', minWidth: '18px', height: '18px', padding: '0 4px', borderRadius: '20px', background: '#e92e8b', color: '#fff', fontSize: '11px', fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid #fff' }}>{obterNotificacoes().filter((item) => !notificacoesLidas.includes(item.id)).length}</span>} 
             </button>
 
           </header>
@@ -2468,6 +2926,14 @@ function App() {
                   ?
                 </p>
 
+                {erroExclusaoProduto && (
+                  <div role="alert" style={{ marginTop: '16px', padding: '13px', borderRadius: '14px', background: '#fff1f2', border: '1px solid #fecdd3', color: '#9f1239', textAlign: 'left', fontSize: '13px', lineHeight: 1.5 }}>
+                    <strong style={{ display: 'block', marginBottom: '5px' }}>Exclusão bloqueada</strong>
+                    {erroExclusaoProduto}
+                    <button type="button" onClick={fecharExclusaoProduto} style={{ display: 'block', marginTop: '10px', padding: '8px 12px', border: 'none', borderRadius: '9px', background: '#fce7f3', color: '#9d174d', fontWeight: 700, cursor: 'pointer' }}>Entendi</button>
+                  </div>
+                )}
+
                 <span
                   style={{
                     display:
@@ -2523,6 +2989,7 @@ function App() {
                     Cancelar
                   </button>
 
+                  {!erroExclusaoProduto && (
                   <button
                     type="button"
                     onClick={
@@ -2553,6 +3020,7 @@ function App() {
                       ? 'Excluindo...'
                       : 'Excluir produto'}
                   </button>
+                  )}
 
                 </div>
 
@@ -3065,6 +3533,14 @@ function App() {
                   ?
                 </p>
 
+                {erroExclusaoCliente && (
+                  <div role="alert" style={{ marginTop: '16px', padding: '13px', borderRadius: '14px', background: '#fff1f2', border: '1px solid #fecdd3', color: '#9f1239', textAlign: 'left', fontSize: '13px', lineHeight: 1.5 }}>
+                    <strong style={{ display: 'block', marginBottom: '5px' }}>Exclusão bloqueada</strong>
+                    {erroExclusaoCliente}
+                    <button type="button" onClick={fecharConfirmacaoExcluirCliente} style={{ display: 'block', marginTop: '10px', padding: '8px 12px', border: 'none', borderRadius: '9px', background: '#fce7f3', color: '#9d174d', fontWeight: 700, cursor: 'pointer' }}>Entendi</button>
+                  </div>
+                )}
+
                 <span
                   style={{
                     display:
@@ -3120,6 +3596,7 @@ function App() {
                     Cancelar
                   </button>
 
+                  {!erroExclusaoCliente && (
                   <button
                     type="button"
                     onClick={
@@ -3150,6 +3627,7 @@ function App() {
                       ? 'Excluindo...'
                       : 'Excluir cliente'}
                   </button>
+                  )}
 
                 </div>
 
@@ -3170,21 +3648,18 @@ function App() {
 
           <header className="topo">
 
-            <div>
-              <span className="saudacao">
-                QuitaAí
-              </span>
-
-              <h1>
-                Minhas Vendas
-              </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
+              <img src="/quitai-logo.png" alt="Quita! Vendas simples, recebimentos organizados" style={{ width: 'clamp(104px, 17vw, 158px)', height: 'auto', maxHeight: '88px', objectFit: 'contain', borderRadius: '12px', flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <span className="saudacao">Olá! 👋</span>
+                <h1>Minhas Vendas</h1>
+                <span style={{ color: '#c43f82', fontSize: '12px', fontWeight: 600, letterSpacing: '.2px' }}>Recebimentos organizados</span>
+              </div>
             </div>
 
-            <button
-              className="botao-notificacao"
-              type="button"
-            >
+            <button className="botao-notificacao" type="button" onClick={abrirNotificacoes} aria-label="Abrir notificações" title="Notificações" style={{ position: 'relative' }}>
               🔔
+              {obterNotificacoes().filter((item) => !notificacoesLidas.includes(item.id)).length > 0 && <span style={{ position: 'absolute', top: '-3px', right: '-3px', minWidth: '18px', height: '18px', padding: '0 4px', borderRadius: '20px', background: '#e92e8b', color: '#fff', fontSize: '11px', fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid #fff' }}>{obterNotificacoes().filter((item) => !notificacoesLidas.includes(item.id)).length}</span>}
             </button>
 
           </header>
@@ -4620,10 +5095,39 @@ function App() {
 
                   )}
 
+                  <button type="button" onClick={abrirConfirmacaoExcluirVenda} style={{ width: '100%', minHeight: '48px', marginTop: '4px', marginBottom: '24px', border: '1px solid #fecdd3', borderRadius: '15px', background: '#fff1f2', color: '#be123c', fontSize: '14px', fontWeight: 700, cursor: 'pointer' }}>
+                    🗑️ Excluir venda
+                  </button>
+
                 </>
               )}
 
           </main>
+
+          {/* CONFIRMAÇÃO DE EXCLUSÃO DA VENDA */}
+          {vendaParaExcluir && (
+            <div className="modal-overlay" onClick={(event) => { if (event.target === event.currentTarget && !excluindoVenda) fecharConfirmacaoExcluirVenda() }}>
+              <div className="modal" style={{ maxWidth: '440px' }}>
+                <div style={{ width: '58px', height: '58px', margin: '0 auto 14px', borderRadius: '50%', background: '#fff1f2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '26px' }}>⚠️</div>
+                <h2 style={{ margin: '0 0 10px', color: '#292329', textAlign: 'center' }}>Excluir esta venda?</h2>
+                <p style={{ color: '#666', fontSize: '14px', lineHeight: 1.55, textAlign: 'center', margin: '0 0 16px' }}>Confirme apenas se tiver certeza. Esta ação é permanente e não poderá ser desfeita.</p>
+                <div style={{ background: '#fff8fb', border: '1px solid #f7dce7', borderRadius: '14px', padding: '14px', marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}><span style={{ color: '#777', fontSize: '13px' }}>Cliente</span><strong style={{ color: '#292329', textAlign: 'right' }}>{vendaParaExcluir.cliente_nome || 'Cliente não informado'}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}><span style={{ color: '#777', fontSize: '13px' }}>Valor da venda</span><strong>R$ {formatarMoeda(vendaParaExcluir.total || 0)}</strong></div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span style={{ color: '#777', fontSize: '13px' }}>Pagamentos registrados</span><strong>R$ {formatarMoeda(vendaParaExcluir.valor_pago || 0)}</strong></div>
+                </div>
+                <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', color: '#9f1239', borderRadius: '13px', padding: '13px', fontSize: '13px', lineHeight: 1.5, marginBottom: '16px' }}>
+                  <strong style={{ display: 'block', marginBottom: '5px' }}>O que acontecerá se excluir?</strong>
+                  Os itens e as parcelas desta venda, assim como os pagamentos registrados no QuitaAí, serão removidos. As quantidades dos produtos serão devolvidas ao estoque. O histórico financeiro desta venda deixará de aparecer no sistema. <strong>Isso não desfaz pagamentos reais já feitos pela cliente.</strong> Confira os valores antes de continuar.
+                </div>
+                {erroExclusaoVenda && <div role="alert" style={{ color: '#9f1239', background: '#fff1f2', borderRadius: '12px', padding: '12px', fontSize: '13px', marginBottom: '14px' }}>{erroExclusaoVenda}</div>}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button type="button" onClick={fecharConfirmacaoExcluirVenda} disabled={excluindoVenda} style={{ flex: 1, minHeight: '46px', border: 'none', borderRadius: '12px', background: '#f7f3f5', color: '#666', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
+                  <button type="button" onClick={confirmarExclusaoVenda} disabled={excluindoVenda} style={{ flex: 1, minHeight: '46px', border: 'none', borderRadius: '12px', background: '#be123c', color: '#fff', fontWeight: 700, cursor: excluindoVenda ? 'wait' : 'pointer' }}>{excluindoVenda ? 'Excluindo...' : 'Sim, excluir venda'}</button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* MODAL PAGAMENTO */}
 
@@ -5858,6 +6362,139 @@ function App() {
         </div>
       )}
 
+      {tela === 'mais' && (
+        <>
+          <header className="topo">
+            <div>
+              <span className="saudacao">QuitaAí</span>
+              <h1>{subTelaMais === 'conta' ? 'Minha conta' : subTelaMais === 'configuracoes' ? 'Configurações' : 'Mais opções'}</h1>
+            </div>
+          </header>
+
+          <main className="conteudo">
+            {subTelaMais === 'menu' && (
+              <section className="secao">
+                <div style={{ marginBottom: '18px' }}>
+                  <h2 style={{ marginBottom: '6px' }}>Sua conta</h2>
+                  <p style={{ color: '#777', fontSize: '14px', margin: 0 }}>
+                    Acesse seus dados e personalize algumas opções do aplicativo.
+                  </p>
+                </div>
+
+                {[{
+                  titulo: 'Minha conta',
+                  descricao: 'Consulte os dados da sua conta',
+                  simbolo: '👤',
+                  acao: () => setSubTelaMais('conta'),
+                }, {
+                  titulo: 'Configurações',
+                  descricao: 'Ajuste as preferências do aplicativo',
+                  simbolo: '⚙️',
+                  acao: () => setSubTelaMais('configuracoes'),
+                }].map((item) => (
+                  <button
+                    key={item.titulo}
+                    type="button"
+                    onClick={item.acao}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', gap: '12px',
+                      minHeight: '68px', marginBottom: '10px', padding: '14px 16px',
+                      border: '1px solid #f0dce3', borderRadius: '14px', background: '#fff',
+                      color: '#42333a', cursor: 'pointer', textAlign: 'left',
+                    }}
+                  >
+                    <span style={{ fontSize: '23px' }}>{item.simbolo}</span>
+                    <span style={{ flex: 1 }}>
+                      <strong style={{ display: 'block', marginBottom: '4px' }}>{item.titulo}</strong>
+                      <span style={{ color: '#777', fontSize: '13px' }}>{item.descricao}</span>
+                    </span>
+                    <span style={{ color: '#c85b83', fontSize: '22px' }}>›</span>
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={sairDaConta}
+                  style={{
+                    width: '100%', minHeight: '50px', marginTop: '8px',
+                    border: '1px solid #f0cbd7', borderRadius: '14px', background: '#fff1f5',
+                    color: '#c43f6d', fontSize: '15px', fontWeight: 700,
+                    cursor: 'pointer', padding: '14px 16px', textAlign: 'left',
+                  }}
+                >
+                  ↪ Sair da conta
+                </button>
+              </section>
+            )}
+
+            {subTelaMais === 'conta' && (
+              <section className="secao">
+                <button type="button" onClick={() => setSubTelaMais('menu')} style={{ border: 0, background: 'transparent', color: '#c43f6d', padding: '0 0 18px', cursor: 'pointer', fontWeight: 700 }}>
+                  ← Voltar para Mais opções
+                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '22px' }}>
+                  <div style={{ width: '58px', height: '58px', borderRadius: '50%', background: '#ffe6ef', display: 'grid', placeItems: 'center', fontSize: '27px' }}>👤</div>
+                  <div>
+                    <h2 style={{ margin: '0 0 5px' }}>{usuarioSalvo.nome || usuarioSalvo.name || 'Minha conta QuitaAí'}</h2>
+                    <p style={{ margin: 0, color: '#777', fontSize: '14px' }}>{usuarioSalvo.email || 'E-mail não disponível'}</p>
+                  </div>
+                </div>
+                <div style={{ borderTop: '1px solid #f1e4e9' }}>
+                  <div style={{ padding: '15px 0', borderBottom: '1px solid #f1e4e9' }}>
+                    <span style={{ display: 'block', color: '#888', fontSize: '12px', marginBottom: '5px' }}>Nome</span>
+                    <strong>{usuarioSalvo.nome || usuarioSalvo.name || 'Não informado'}</strong>
+                  </div>
+                  <div style={{ padding: '15px 0', borderBottom: '1px solid #f1e4e9' }}>
+                    <span style={{ display: 'block', color: '#888', fontSize: '12px', marginBottom: '5px' }}>E-mail</span>
+                    <strong>{usuarioSalvo.email || 'Não informado'}</strong>
+                  </div>
+                </div>
+                <p style={{ color: '#777', fontSize: '13px', lineHeight: 1.5, marginTop: '18px' }}>
+                  Para manter seus dados protegidos, saia da conta quando terminar de usar o aplicativo em um dispositivo compartilhado.
+                </p>
+              </section>
+            )}
+
+            {subTelaMais === 'configuracoes' && (
+              <section className="secao">
+                <button type="button" onClick={() => setSubTelaMais('menu')} style={{ border: 0, background: 'transparent', color: '#c43f6d', padding: '0 0 18px', cursor: 'pointer', fontWeight: 700 }}>
+                  ← Voltar para Mais opções
+                </button>
+                <h2 style={{ margin: '0 0 6px' }}>Preferências</h2>
+                <p style={{ color: '#777', fontSize: '14px', margin: '0 0 18px' }}>
+                  Escolha como o aplicativo deve se comportar neste dispositivo.
+                </p>
+                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '16px 0', borderTop: '1px solid #f1e4e9', borderBottom: '1px solid #f1e4e9', cursor: 'pointer' }}>
+                  <span>
+                    <strong style={{ display: 'block', marginBottom: '5px' }}>Confirmar antes de sair</strong>
+                    <span style={{ color: '#777', fontSize: '13px', lineHeight: 1.4 }}>Evita encerrar a sessão por toque acidental.</span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={confirmarSaida}
+                    onChange={(evento) => {
+                      const ativado = evento.target.checked
+                      setConfirmarSaida(ativado)
+                      localStorage.setItem('quitai_confirmar_saida', String(ativado))
+                    }}
+                    style={{ width: '20px', height: '20px', accentColor: '#d95f8c', flexShrink: 0 }}
+                  />
+                </label>
+                <div style={{ padding: '16px 0' }}>
+                  <strong style={{ display: 'block', marginBottom: '5px' }}>Aparência</strong>
+                  <span style={{ color: '#777', fontSize: '13px' }}>Tema rosa-claro do QuitaAí</span>
+                  <span style={{ display: 'block', marginTop: '8px', background: '#fff1f5', border: '1px solid #f0cbd7', color: '#c43f6d', borderRadius: '10px', padding: '9px 12px', fontSize: '13px' }}>Tema atual · Claro</span>
+                </div>
+                <div style={{ padding: '14px 0', borderTop: '1px solid #f1e4e9' }}>
+                  <strong style={{ display: 'block', marginBottom: '5px' }}>Notificações</strong>
+                  <span style={{ color: '#777', fontSize: '13px', lineHeight: 1.5 }}>Avisos internos sobre vencimentos próximos e pagamentos atrasados aparecem na central de notificações, pelo sino no cabeçalho.</span>
+                </div>
+              </section>
+            )}
+          </main>
+        </>
+      )}
+
       {/* =====================================================
           NAVEGAÇÃO INFERIOR
       ===================================================== */}
@@ -5946,8 +6583,9 @@ function App() {
         </button>
 
         <button
-          className="nav-item"
+          className={`nav-item ${tela === 'mais' ? 'ativo' : ''}`}
           type="button"
+          onClick={() => setTela('mais')}
         >
           <span>
             ☰
