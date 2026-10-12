@@ -37,6 +37,89 @@ func calcularStatusVenda(vencimento string, saldo float64) string {
 	return "EM_ABERTO"
 }
 
+// ExcluirVenda remove uma venda e seus registros dependentes em uma única transação.
+// Os pagamentos do sistema são removidos, e as quantidades dos itens retornam ao estoque.
+func ExcluirVenda(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+			return
+		}
+
+		idTexto := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/vendas/"))
+		vendaID, err := strconv.Atoi(idTexto)
+		if err != nil || vendaID <= 0 {
+			http.Error(w, "ID da venda inválido", http.StatusBadRequest)
+			return
+		}
+
+		tx, err := db.Begin()
+		if err != nil {
+			http.Error(w, "Não foi possível iniciar a exclusão da venda.", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback()
+
+		var existente int
+		err = tx.QueryRow("SELECT id FROM vendas WHERE id = $1 FOR UPDATE", vendaID).Scan(&existente)
+		if err == sql.ErrNoRows {
+			http.Error(w, "Venda não encontrada.", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, "Não foi possível localizar a venda para exclusão.", http.StatusInternalServerError)
+			return
+		}
+
+		// Retorna ao estoque os itens associados a esta venda antes de removê-los.
+		_, err = tx.Exec(`
+			UPDATE produtos p
+			SET estoque = p.estoque + itens.quantidade,
+			    atualizado_em = CURRENT_TIMESTAMP
+			FROM (
+				SELECT produto_id, SUM(quantidade)::INTEGER AS quantidade
+				FROM venda_itens
+				WHERE venda_id = $1
+				GROUP BY produto_id
+			) AS itens
+			WHERE p.id = itens.produto_id
+		`, vendaID)
+		if err != nil {
+			http.Error(w, "Não foi possível devolver os produtos ao estoque. A venda não foi excluída.", http.StatusInternalServerError)
+			return
+		}
+
+		// A ordem preserva as relações entre pagamentos, parcelas e venda.
+		if _, err = tx.Exec("DELETE FROM pagamentos WHERE venda_id = $1", vendaID); err != nil {
+			http.Error(w, "Não foi possível remover os pagamentos relacionados. A venda não foi excluída.", http.StatusInternalServerError)
+			return
+		}
+		if _, err = tx.Exec("DELETE FROM parcelas WHERE venda_id = $1", vendaID); err != nil {
+			http.Error(w, "Não foi possível remover as parcelas relacionadas. A venda não foi excluída.", http.StatusInternalServerError)
+			return
+		}
+		if _, err = tx.Exec("DELETE FROM venda_itens WHERE venda_id = $1", vendaID); err != nil {
+			http.Error(w, "Não foi possível remover os itens relacionados. A venda não foi excluída.", http.StatusInternalServerError)
+			return
+		}
+		result, err := tx.Exec("DELETE FROM vendas WHERE id = $1", vendaID)
+		if err != nil {
+			http.Error(w, "Não foi possível excluir a venda. Nenhuma alteração foi confirmada.", http.StatusInternalServerError)
+			return
+		}
+		linhas, err := result.RowsAffected()
+		if err != nil || linhas == 0 {
+			http.Error(w, "Não foi possível confirmar a exclusão da venda.", http.StatusInternalServerError)
+			return
+		}
+		if err = tx.Commit(); err != nil {
+			http.Error(w, "Não foi possível concluir a exclusão da venda.", http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func CriarVenda(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
