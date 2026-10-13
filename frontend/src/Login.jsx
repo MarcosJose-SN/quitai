@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './Login.css'
 import logoQuitaAi from './assets/quitai-logo.svg'
 
@@ -9,6 +9,92 @@ function Login({ onLogin }) {
   const [lembrar, setLembrar] = useState(false)
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState('')
+  const [mensagem, setMensagem] = useState('')
+  const [modalRecuperacao, setModalRecuperacao] = useState(false)
+  const [etapaRecuperacao, setEtapaRecuperacao] = useState(1)
+  const [codigoRecuperacao, setCodigoRecuperacao] = useState('')
+  const [novaSenha, setNovaSenha] = useState('')
+  const [confirmarSenha, setConfirmarSenha] = useState('')
+  const [googleCarregando, setGoogleCarregando] = useState(false)
+  const googleBotaoRef = useRef(null)
+
+  function salvarSessao(dados) {
+    if (!dados?.token || !dados?.usuario) {
+      throw new Error('O servidor não retornou o token ou os dados do usuário.')
+    }
+    const armazenamento = lembrar ? localStorage : sessionStorage
+    const outroArmazenamento = lembrar ? sessionStorage : localStorage
+    outroArmazenamento.removeItem('quitai_token')
+    outroArmazenamento.removeItem('quitai_usuario')
+    armazenamento.setItem('quitai_token', dados.token)
+    armazenamento.setItem('quitai_usuario', JSON.stringify(dados.usuario))
+    if (typeof onLogin === 'function') onLogin(dados.usuario)
+  }
+
+  async function processarCredencialGoogle(response) {
+    setErro('')
+    setMensagem('')
+    try {
+      setGoogleCarregando(true)
+      const resposta = await fetch('http://localhost:8082/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ credential: response.credential }),
+      })
+      const dados = await resposta.json().catch(() => ({}))
+      if (!resposta.ok) {
+        throw new Error(dados.mensagem || dados.erro || 'Não foi possível entrar com Google.')
+      }
+      salvarSessao(dados)
+    } catch (error) {
+      setErro(error.message || 'Falha ao entrar com Google.')
+    } finally {
+      setGoogleCarregando(false)
+    }
+  }
+
+  useEffect(() => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+    if (!clientId) return
+
+    let tentativas = 0
+    const configurarGoogle = () => {
+      if (!window.google?.accounts?.id || !googleBotaoRef.current) {
+        tentativas += 1
+        if (tentativas < 30) window.setTimeout(configurarGoogle, 200)
+        return
+      }
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: processarCredencialGoogle,
+      })
+      googleBotaoRef.current.innerHTML = ''
+      window.google.accounts.id.renderButton(googleBotaoRef.current, {
+        type: 'standard',
+        theme: 'outline',
+        size: 'large',
+        text: 'continue_with',
+        shape: 'rectangular',
+        width: Math.min(320, googleBotaoRef.current.clientWidth || 320),
+        locale: 'pt-BR',
+      })
+    }
+
+    if (!document.querySelector('script[data-google-identity]')) {
+      const script = document.createElement('script')
+      script.src = 'https://accounts.google.com/gsi/client'
+      script.async = true
+      script.defer = true
+      script.dataset.googleIdentity = 'true'
+      script.onload = configurarGoogle
+      script.onerror = () => setErro('Não foi possível carregar o login do Google.')
+      document.head.appendChild(script)
+    } else {
+      configurarGoogle()
+    }
+
+    return () => {}
+  }, [])
 
   async function entrar(event) {
     event.preventDefault()
@@ -63,26 +149,7 @@ function Login({ onLogin }) {
         return
       }
 
-      const armazenamento = lembrar
-        ? localStorage
-        : sessionStorage
-
-      const outroArmazenamento = lembrar
-        ? sessionStorage
-        : localStorage
-
-      outroArmazenamento.removeItem('quitai_token')
-      outroArmazenamento.removeItem('quitai_usuario')
-
-      armazenamento.setItem('quitai_token', dados.token)
-      armazenamento.setItem(
-        'quitai_usuario',
-        JSON.stringify(dados.usuario)
-      )
-
-      if (typeof onLogin === 'function') {
-        onLogin(dados.usuario)
-      }
+      salvarSessao(dados)
     } catch (error) {
       console.error('Erro ao realizar login:', error)
 
@@ -94,14 +161,71 @@ function Login({ onLogin }) {
     }
   }
 
-  function recuperarSenha(event) {
+  async function recuperarSenha(event) {
     event.preventDefault()
-    setErro('A recuperação de senha ainda não está configurada.')
+    setErro('')
+    setMensagem('')
+    if (!email.trim()) {
+      setErro('Informe seu e-mail no campo acima para receber o código.')
+      return
+    }
+    try {
+      setCarregando(true)
+      const resposta = await fetch('http://localhost:8082/auth/recuperar-senha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      })
+      const dados = await resposta.json().catch(() => ({}))
+      if (!resposta.ok) throw new Error(dados.mensagem || dados.erro || 'Não foi possível solicitar a recuperação.')
+      setModalRecuperacao(true)
+      setEtapaRecuperacao(2)
+      setMensagem(dados.mensagem || 'Se o e-mail estiver cadastrado, você receberá um código.')
+    } catch (error) {
+      setErro(error.message || 'Não foi possível solicitar a recuperação.')
+    } finally {
+      setCarregando(false)
+    }
   }
 
-  function continuarComGoogle(event) {
+  async function redefinirSenha(event) {
     event.preventDefault()
-    setErro('O login com Google ainda não está configurado.')
+    setErro('')
+    setMensagem('')
+    if (novaSenha.length < 6) {
+      setErro('A nova senha deve ter pelo menos 6 caracteres.')
+      return
+    }
+    if (novaSenha !== confirmarSenha) {
+      setErro('As senhas não são iguais.')
+      return
+    }
+    try {
+      setCarregando(true)
+      const resposta = await fetch('http://localhost:8082/auth/redefinir-senha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          email: email.trim(),
+          codigo: codigoRecuperacao.trim(),
+          nova_senha: novaSenha,
+        }),
+      })
+      const dados = await resposta.json().catch(() => ({}))
+      if (!resposta.ok) throw new Error(dados.mensagem || dados.erro || 'Não foi possível redefinir a senha.')
+      setModalRecuperacao(false)
+      setEtapaRecuperacao(1)
+      setCodigoRecuperacao('')
+      setNovaSenha('')
+      setConfirmarSenha('')
+      setSenha('')
+      setMensagem(dados.mensagem || 'Senha redefinida com sucesso.')
+      setErro('')
+    } catch (error) {
+      setErro(error.message || 'Não foi possível redefinir a senha.')
+    } finally {
+      setCarregando(false)
+    }
   }
 
   function criarConta(event) {
@@ -227,6 +351,9 @@ function Login({ onLogin }) {
               {erro}
             </div>
           )}
+          {mensagem && !modalRecuperacao && (
+            <div className="login-sucesso" role="status">{mensagem}</div>
+          )}
 
           <div className="login-opcoes">
             <label className="login-checkbox">
@@ -266,14 +393,15 @@ function Login({ onLogin }) {
           <span></span>
         </div>
 
-        <button
-          type="button"
-          className="login-google"
-          onClick={continuarComGoogle}
-        >
-          <span className="login-google-logo">G</span>
-          <span>Continuar com Google</span>
-        </button>
+        <div className="login-google-area">
+          <div ref={googleBotaoRef} className="login-google-oficial" />
+          {!import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+            <p className="login-google-aviso">
+              Configure VITE_GOOGLE_CLIENT_ID para ativar o login Google.
+            </p>
+          )}
+          {googleCarregando && <p role="status">Conectando com Google...</p>}
+        </div>
 
         <div className="login-criar-conta">
           <span>Ainda não possui uma conta?</span>
@@ -282,6 +410,59 @@ function Login({ onLogin }) {
             Criar minha conta
           </button>
         </div>
+
+        {modalRecuperacao && (
+          <div className="login-modal-fundo" role="presentation">
+            <section className="login-modal" role="dialog" aria-modal="true" aria-labelledby="recuperacao-titulo">
+              <button
+                type="button"
+                className="login-modal-fechar"
+                aria-label="Fechar"
+                onClick={() => { setModalRecuperacao(false); setErro(''); setMensagem('') }}
+              >
+                ×
+              </button>
+              <h2 id="recuperacao-titulo">Recuperar senha</h2>
+              <p>Informe o código enviado para <strong>{email}</strong> e escolha uma nova senha.</p>
+              {mensagem && <div className="login-sucesso" role="status">{mensagem}</div>}
+              <form onSubmit={redefinirSenha} className="login-formulario login-formulario-recuperacao">
+                <div className="login-grupo">
+                  <label htmlFor="codigo-recuperacao">Código de 6 dígitos</label>
+                  <input
+                    id="codigo-recuperacao"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={codigoRecuperacao}
+                    onChange={(event) => setCodigoRecuperacao(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    required
+                  />
+                </div>
+                <div className="login-grupo">
+                  <label htmlFor="nova-senha">Nova senha</label>
+                  <input id="nova-senha" type="password" autoComplete="new-password" minLength={6} value={novaSenha} onChange={(event) => setNovaSenha(event.target.value)} required />
+                </div>
+                <div className="login-grupo">
+                  <label htmlFor="confirmar-senha">Confirmar nova senha</label>
+                  <input id="confirmar-senha" type="password" autoComplete="new-password" minLength={6} value={confirmarSenha} onChange={(event) => setConfirmarSenha(event.target.value)} required />
+                </div>
+                {erro && <div className="login-erro" role="alert">{erro}</div>}
+                <button type="submit" className="login-botao-entrar" disabled={carregando}>
+                  {carregando ? 'Salvando...' : 'Redefinir senha'}
+                </button>
+              </form>
+              <button
+                type="button"
+                className="login-link login-reenviar"
+                disabled={carregando}
+                onClick={recuperarSenha}
+              >
+                Reenviar código
+              </button>
+            </section>
+          </div>
+        )}
 
         <footer className="login-rodape">
           © 2026 QuitaAí · Gestão de vendas e recebimentos

@@ -1439,3 +1439,100 @@
     flex-basis: 100px !important;
   }
 }
+
+/* Recuperação de senha */
+.login-sucesso {
+  padding: 12px;
+  margin: 12px 0;
+  color: #176b45;
+  background: #e9f8f0;
+  border: 1px solid #bce8d0;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.login-google-area {
+  width: 100%;
+  margin: 16px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.login-google-oficial {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.login-google-aviso {
+  margin: 0;
+  color: #777;
+  font-size: 12px;
+  text-align: center;
+}
+
+.login-modal-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgb(30 20 27 / 55%);
+  overflow-y: auto;
+}
+
+.login-modal {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 28px;
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 20%);
+}
+
+.login-modal h2 {
+  margin: 0 32px 10px 0;
+}
+
+.login-modal > p {
+  color: #666;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.login-modal-fechar {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  border: 0;
+  background: transparent;
+  color: #555;
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.login-formulario-recuperacao {
+  margin-top: 20px;
+}
+
+.login-formulario-recuperacao input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  font: inherit;
+}
+
+.login-reenviar {
+  display: block;
+  margin: 16px auto 0;
+}

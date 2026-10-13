@@ -41,6 +41,13 @@ func main() {
 	http.HandleFunc("/auth/login", auth.Login(db))
 	http.Handle("/auth/me", auth.AuthMiddleware(auth.Me(db)))
 
+	if err := auth.InicializarRecuperacao(db); err != nil {
+		log.Fatal("Erro ao inicializar recuperação de senha:", err)
+	}
+
+	http.HandleFunc("/auth/recuperar-senha", auth.SolicitarRecuperacao(db))
+	http.HandleFunc("/auth/redefinir-senha", auth.RedefinirSenha(db))
+	http.HandleFunc("/auth/google", auth.LoginGoogle(db))
 	// ==========================================
 	// PRODUTOS
 	// ==========================================
