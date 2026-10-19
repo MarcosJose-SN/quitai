@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/MarcosJose/quitai/auth"
 	"github.com/MarcosJose/quitai/models"
 )
 
@@ -17,21 +18,24 @@ func CriarCliente(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var cliente models.Cliente
+		usuarioID, ok := auth.UsuarioID(r)
+		if !ok {
+			http.Error(w, "Usuário não autenticado", http.StatusUnauthorized)
+			return
+		}
 
+		var cliente models.Cliente
 		if err := json.NewDecoder(r.Body).Decode(&cliente); err != nil {
 			http.Error(w, "Dados inválidos", http.StatusBadRequest)
 			return
 		}
 
-		query := `
-			INSERT INTO clientes (nome, telefone, observacoes)
-			VALUES ($1, $2, $3)
+		err := db.QueryRow(`
+			INSERT INTO clientes (usuario_id, nome, telefone, observacoes)
+			VALUES ($1, $2, $3, $4)
 			RETURNING id
-		`
-
-		err := db.QueryRow(
-			query,
+		`,
+			usuarioID,
 			cliente.Nome,
 			cliente.Telefone,
 			cliente.Observacoes,
@@ -55,11 +59,18 @@ func ListarClientes(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		usuarioID, ok := auth.UsuarioID(r)
+		if !ok {
+			http.Error(w, "Usuário não autenticado", http.StatusUnauthorized)
+			return
+		}
+
 		rows, err := db.Query(`
 			SELECT id, nome, telefone, observacoes
 			FROM clientes
+			WHERE usuario_id = $1
 			ORDER BY id DESC
-		`)
+		`, usuarioID)
 		if err != nil {
 			http.Error(w, "Erro ao buscar clientes", http.StatusInternalServerError)
 			return
@@ -70,7 +81,6 @@ func ListarClientes(db *sql.DB) http.HandlerFunc {
 
 		for rows.Next() {
 			var cliente models.Cliente
-
 			if err := rows.Scan(
 				&cliente.ID,
 				&cliente.Nome,
@@ -80,7 +90,6 @@ func ListarClientes(db *sql.DB) http.HandlerFunc {
 				http.Error(w, "Erro ao ler clientes", http.StatusInternalServerError)
 				return
 			}
-
 			clientes = append(clientes, cliente)
 		}
 
@@ -101,8 +110,13 @@ func EditarCliente(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		idTexto := strings.TrimPrefix(r.URL.Path, "/clientes/")
-		id, err := strconv.Atoi(idTexto)
+		usuarioID, ok := auth.UsuarioID(r)
+		if !ok {
+			http.Error(w, "Usuário não autenticado", http.StatusUnauthorized)
+			return
+		}
+
+		id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/clientes/"))
 		if err != nil || id <= 0 {
 			http.Error(w, "ID do cliente inválido", http.StatusBadRequest)
 			return
@@ -114,22 +128,20 @@ func EditarCliente(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		query := `
+		err = db.QueryRow(`
 			UPDATE clientes
 			SET nome = $1,
 				telefone = $2,
 				observacoes = $3,
 				atualizado_em = CURRENT_TIMESTAMP
-			WHERE id = $4
+			WHERE id = $4 AND usuario_id = $5
 			RETURNING id, nome, telefone, observacoes
-		`
-
-		err = db.QueryRow(
-			query,
+		`,
 			cliente.Nome,
 			cliente.Telefone,
 			cliente.Observacoes,
 			id,
+			usuarioID,
 		).Scan(
 			&cliente.ID,
 			&cliente.Nome,
@@ -158,61 +170,49 @@ func ExcluirCliente(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		idTexto := strings.TrimPrefix(r.URL.Path, "/clientes/")
-		id, err := strconv.Atoi(idTexto)
+		usuarioID, ok := auth.UsuarioID(r)
+		if !ok {
+			http.Error(w, "Usuário não autenticado", http.StatusUnauthorized)
+			return
+		}
+
+		id, err := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/clientes/"))
 		if err != nil || id <= 0 {
 			http.Error(w, "ID do cliente inválido", http.StatusBadRequest)
 			return
 		}
 
-		// Verifica se o cliente existe.
-		var existe bool
-		err = db.QueryRow(
-			`SELECT EXISTS (SELECT 1 FROM clientes WHERE id = $1)`,
-			id,
-		).Scan(&existe)
-
-		if err != nil {
-			http.Error(w, "Não foi possível verificar o cliente. Tente novamente.", http.StatusInternalServerError)
-			return
-		}
-		if !existe {
-			http.Error(w, "Cliente não encontrado.", http.StatusNotFound)
-			return
-		}
-
-		// Não permite excluir clientes que possuem vendas.
 		var possuiVendas bool
-		err = db.QueryRow(
-			`SELECT EXISTS (SELECT 1 FROM vendas WHERE cliente_id = $1)`,
-			id,
-		).Scan(&possuiVendas)
+		err = db.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1
+				FROM vendas
+				WHERE cliente_id = $1 AND usuario_id = $2
+			)
+		`, id, usuarioID).Scan(&possuiVendas)
 
 		if err != nil {
-			http.Error(w, "Não foi possível verificar se o cliente possui vendas vinculadas. Tente novamente.", http.StatusInternalServerError)
+			http.Error(w, "Não foi possível verificar as vendas do cliente", http.StatusInternalServerError)
 			return
 		}
 
 		if possuiVendas {
 			http.Error(
 				w,
-				"Este cliente possui uma ou mais vendas registradas. A exclusão foi bloqueada para proteger o histórico de compras e pagamentos. Mantenha este cadastro para que todas as informações continuem disponíveis.",
+				"Este cliente possui vendas registradas. A exclusão foi bloqueada para proteger o histórico de compras e pagamentos.",
 				http.StatusConflict,
 			)
 			return
 		}
 
-		// Exclui somente se não houver vendas vinculadas.
-		result, err := db.Exec(
-			`DELETE FROM clientes WHERE id = $1`,
-			id,
-		)
+		result, err := db.Exec(`
+			DELETE FROM clientes
+			WHERE id = $1 AND usuario_id = $2
+		`, id, usuarioID)
 
 		if err != nil {
 			errorSQL := strings.ToLower(err.Error())
-
-			if strings.Contains(errorSQL, "foreign key") ||
-				strings.Contains(errorSQL, "clientes") {
+			if strings.Contains(errorSQL, "foreign key") {
 				http.Error(
 					w,
 					"Este cliente está vinculado a outros registros. A exclusão foi bloqueada para proteger o histórico.",
@@ -221,21 +221,17 @@ func ExcluirCliente(db *sql.DB) http.HandlerFunc {
 				return
 			}
 
-			http.Error(
-				w,
-				"Não foi possível excluir o cliente neste momento. Tente novamente.",
-				http.StatusInternalServerError,
-			)
+			http.Error(w, "Não foi possível excluir o cliente", http.StatusInternalServerError)
 			return
 		}
 
 		linhas, err := result.RowsAffected()
 		if err != nil {
-			http.Error(w, "Não foi possível confirmar a exclusão do cliente.", http.StatusInternalServerError)
+			http.Error(w, "Não foi possível confirmar a exclusão do cliente", http.StatusInternalServerError)
 			return
 		}
 		if linhas == 0 {
-			http.Error(w, "Cliente não encontrado.", http.StatusNotFound)
+			http.Error(w, "Cliente não encontrado", http.StatusNotFound)
 			return
 		}
 

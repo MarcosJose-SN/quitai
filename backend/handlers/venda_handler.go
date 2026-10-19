@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MarcosJose/quitai/auth"
 	"github.com/MarcosJose/quitai/models"
 )
 
@@ -29,7 +30,6 @@ func calcularStatusVenda(vencimento string, saldo float64) string {
 	}
 
 	diasRestantes := int(dataVencimento.Sub(hoje).Hours() / 24)
-
 	if diasRestantes <= 7 {
 		return "VENCE_EM_BREVE"
 	}
@@ -37,12 +37,16 @@ func calcularStatusVenda(vencimento string, saldo float64) string {
 	return "EM_ABERTO"
 }
 
-// ExcluirVenda remove uma venda e seus registros dependentes em uma única transação.
-// Os pagamentos do sistema são removidos, e as quantidades dos itens retornam ao estoque.
 func ExcluirVenda(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+			return
+		}
+
+		usuarioID, ok := auth.UsuarioID(r)
+		if !ok {
+			http.Error(w, "Usuário não autenticado", http.StatusUnauthorized)
 			return
 		}
 
@@ -61,7 +65,11 @@ func ExcluirVenda(db *sql.DB) http.HandlerFunc {
 		defer tx.Rollback()
 
 		var existente int
-		err = tx.QueryRow("SELECT id FROM vendas WHERE id = $1 FOR UPDATE", vendaID).Scan(&existente)
+		err = tx.QueryRow(
+			"SELECT id FROM vendas WHERE id = $1 AND usuario_id = $2 FOR UPDATE",
+			vendaID, usuarioID,
+		).Scan(&existente)
+
 		if err == sql.ErrNoRows {
 			http.Error(w, "Venda não encontrada.", http.StatusNotFound)
 			return
@@ -71,7 +79,7 @@ func ExcluirVenda(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		// Retorna ao estoque os itens associados a esta venda antes de removê-los.
+		// Devolve o estoque apenas dos produtos pertencentes ao usuário.
 		_, err = tx.Exec(`
 			UPDATE produtos p
 			SET estoque = p.estoque + itens.quantidade,
@@ -83,39 +91,57 @@ func ExcluirVenda(db *sql.DB) http.HandlerFunc {
 				GROUP BY produto_id
 			) AS itens
 			WHERE p.id = itens.produto_id
-		`, vendaID)
+			  AND p.usuario_id = $2
+		`, vendaID, usuarioID)
 		if err != nil {
 			http.Error(w, "Não foi possível devolver os produtos ao estoque. A venda não foi excluída.", http.StatusInternalServerError)
 			return
 		}
 
-		// A ordem preserva as relações entre pagamentos, parcelas e venda.
-		if _, err = tx.Exec("DELETE FROM pagamentos WHERE venda_id = $1", vendaID); err != nil {
+		if _, err = tx.Exec(
+			"DELETE FROM pagamentos WHERE venda_id = $1",
+			vendaID,
+		); err != nil {
 			http.Error(w, "Não foi possível remover os pagamentos relacionados. A venda não foi excluída.", http.StatusInternalServerError)
 			return
 		}
-		if _, err = tx.Exec("DELETE FROM parcelas WHERE venda_id = $1", vendaID); err != nil {
+
+		if _, err = tx.Exec(
+			"DELETE FROM parcelas WHERE venda_id = $1",
+			vendaID,
+		); err != nil {
 			http.Error(w, "Não foi possível remover as parcelas relacionadas. A venda não foi excluída.", http.StatusInternalServerError)
 			return
 		}
-		if _, err = tx.Exec("DELETE FROM venda_itens WHERE venda_id = $1", vendaID); err != nil {
+
+		if _, err = tx.Exec(
+			"DELETE FROM venda_itens WHERE venda_id = $1",
+			vendaID,
+		); err != nil {
 			http.Error(w, "Não foi possível remover os itens relacionados. A venda não foi excluída.", http.StatusInternalServerError)
 			return
 		}
-		result, err := tx.Exec("DELETE FROM vendas WHERE id = $1", vendaID)
+
+		result, err := tx.Exec(
+			"DELETE FROM vendas WHERE id = $1 AND usuario_id = $2",
+			vendaID, usuarioID,
+		)
 		if err != nil {
 			http.Error(w, "Não foi possível excluir a venda. Nenhuma alteração foi confirmada.", http.StatusInternalServerError)
 			return
 		}
+
 		linhas, err := result.RowsAffected()
 		if err != nil || linhas == 0 {
 			http.Error(w, "Não foi possível confirmar a exclusão da venda.", http.StatusInternalServerError)
 			return
 		}
+
 		if err = tx.Commit(); err != nil {
 			http.Error(w, "Não foi possível concluir a exclusão da venda.", http.StatusInternalServerError)
 			return
 		}
+
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -127,141 +153,81 @@ func CriarVenda(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		var venda models.Venda
+		usuarioID, ok := auth.UsuarioID(r)
+		if !ok {
+			http.Error(w, "Usuário não autenticado", http.StatusUnauthorized)
+			return
+		}
 
+		var venda models.Venda
 		if err := json.NewDecoder(r.Body).Decode(&venda); err != nil {
 			http.Error(w, "JSON inválido", http.StatusBadRequest)
 			return
 		}
 
-		// ============================================================
-		// VALIDA CLIENTE
-		// ============================================================
-
 		if venda.ClienteID <= 0 {
-			http.Error(
-				w,
-				"Informe um cliente válido",
-				http.StatusBadRequest,
-			)
+			http.Error(w, "Informe um cliente válido", http.StatusBadRequest)
 			return
 		}
 
-		// ============================================================
-		// VALIDA DATA DA COMPRA
-		// ============================================================
+		// Impede criar uma venda para um cliente de outra conta.
+		var clienteExiste bool
+		err := db.QueryRow(
+			"SELECT EXISTS(SELECT 1 FROM clientes WHERE id = $1 AND usuario_id = $2)",
+			venda.ClienteID, usuarioID,
+		).Scan(&clienteExiste)
+		if err != nil {
+			http.Error(w, "Erro ao validar cliente", http.StatusInternalServerError)
+			return
+		}
+		if !clienteExiste {
+			http.Error(w, "Cliente não encontrado.", http.StatusNotFound)
+			return
+		}
 
 		if strings.TrimSpace(venda.DataCompra) == "" {
-			http.Error(
-				w,
-				"Informe a data da compra",
-				http.StatusBadRequest,
-			)
+			http.Error(w, "Informe a data da compra", http.StatusBadRequest)
 			return
 		}
 
-		dataCompra, err := time.Parse(
-			"2006-01-02",
-			venda.DataCompra,
-		)
-
+		dataCompra, err := time.Parse("2006-01-02", venda.DataCompra)
 		if err != nil {
-			http.Error(
-				w,
-				"Data da compra inválida. Use AAAA-MM-DD",
-				http.StatusBadRequest,
-			)
+			http.Error(w, "Data da compra inválida. Use AAAA-MM-DD", http.StatusBadRequest)
 			return
 		}
-
-		// ============================================================
-		// VALIDA PRIMEIRO VENCIMENTO
-		// ============================================================
 
 		if strings.TrimSpace(venda.DataVencimento) == "" {
-			http.Error(
-				w,
-				"Informe a data do primeiro vencimento",
-				http.StatusBadRequest,
-			)
+			http.Error(w, "Informe a data do primeiro vencimento", http.StatusBadRequest)
 			return
 		}
 
-		dataVencimento, err := time.Parse(
-			"2006-01-02",
-			venda.DataVencimento,
-		)
-
+		dataVencimento, err := time.Parse("2006-01-02", venda.DataVencimento)
 		if err != nil {
-			http.Error(
-				w,
-				"Data do primeiro vencimento inválida. Use AAAA-MM-DD",
-				http.StatusBadRequest,
-			)
+			http.Error(w, "Data do primeiro vencimento inválida. Use AAAA-MM-DD", http.StatusBadRequest)
 			return
 		}
 
-		// O primeiro vencimento não pode ser anterior
-		// à data da compra.
 		if dataVencimento.Before(dataCompra) {
-			http.Error(
-				w,
-				"A data do primeiro vencimento não pode ser anterior à data da compra",
-				http.StatusBadRequest,
-			)
+			http.Error(w, "A data do primeiro vencimento não pode ser anterior à data da compra", http.StatusBadRequest)
 			return
 		}
-
-		// ============================================================
-		// VALIDA NÚMERO DE PARCELAS
-		// ============================================================
 
 		if venda.TotalParcelas <= 0 {
 			venda.TotalParcelas = 1
 		}
-
 		if venda.TotalParcelas > 3 {
-			http.Error(
-				w,
-				"O número máximo de parcelas é 3",
-				http.StatusBadRequest,
-			)
+			http.Error(w, "O número máximo de parcelas é 3", http.StatusBadRequest)
 			return
 		}
 
-		// ============================================================
-		// COMPATIBILIDADE
-		// ============================================================
-		//
-		// O campo prazo_pagamento continua existindo no banco
-		// para manter compatibilidade com registros antigos.
-		//
-		// A partir de agora ele não determina mais o vencimento.
-		// O vencimento é definido diretamente por DataVencimento.
-		//
+		// Mantém compatibilidade com registros antigos.
 		venda.PrazoPagamento = 0
-
 		vencimento := dataVencimento.Format("2006-01-02")
-
-		status := calcularStatusVenda(
-			vencimento,
-			0,
-		)
-
-		// ============================================================
-		// CRIA A VENDA
-		// ============================================================
-		//
-		// A venda começa com:
-		// total = 0
-		// valor_pago = 0
-		// saldo = 0
-		//
-		// O total será calculado quando os produtos forem adicionados.
-		// ============================================================
+		status := calcularStatusVenda(vencimento, 0)
 
 		err = db.QueryRow(`
 			INSERT INTO vendas (
+				usuario_id,
 				cliente_id,
 				data_compra,
 				prazo_pagamento,
@@ -272,9 +238,10 @@ func CriarVenda(db *sql.DB) http.HandlerFunc {
 				status,
 				total_parcelas
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 			RETURNING id
 		`,
+			usuarioID,
 			venda.ClienteID,
 			venda.DataCompra,
 			venda.PrazoPagamento,
@@ -287,17 +254,9 @@ func CriarVenda(db *sql.DB) http.HandlerFunc {
 		).Scan(&venda.ID)
 
 		if err != nil {
-			http.Error(
-				w,
-				"Erro ao criar venda: "+err.Error(),
-				http.StatusInternalServerError,
-			)
+			http.Error(w, "Erro ao criar venda: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		// ============================================================
-		// PREENCHE A RESPOSTA
-		// ============================================================
 
 		venda.Total = 0
 		venda.ValorPago = 0
@@ -306,13 +265,8 @@ func CriarVenda(db *sql.DB) http.HandlerFunc {
 		venda.DataVencimento = vencimento
 		venda.Status = status
 
-		w.Header().Set(
-			"Content-Type",
-			"application/json",
-		)
-
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-
 		json.NewEncoder(w).Encode(venda)
 	}
 }
@@ -320,11 +274,13 @@ func CriarVenda(db *sql.DB) http.HandlerFunc {
 func ListarVendas(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(
-				w,
-				"Método não permitido",
-				http.StatusMethodNotAllowed,
-			)
+			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+			return
+		}
+
+		usuarioID, ok := auth.UsuarioID(r)
+		if !ok {
+			http.Error(w, "Usuário não autenticado", http.StatusUnauthorized)
 			return
 		}
 
@@ -343,26 +299,21 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 			FROM vendas v
 			LEFT JOIN clientes c
 				ON c.id = v.cliente_id
+				AND c.usuario_id = v.usuario_id
+			WHERE v.usuario_id = $1
 			ORDER BY v.id DESC
-		`)
-
+		`, usuarioID)
 		if err != nil {
-			http.Error(
-				w,
-				"Erro ao listar vendas: "+err.Error(),
-				http.StatusInternalServerError,
-			)
+			http.Error(w, "Erro ao listar vendas: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-
 		defer rows.Close()
 
 		vendas := []models.Venda{}
 
 		for rows.Next() {
 			var venda models.Venda
-
-			err := rows.Scan(
+			if err := rows.Scan(
 				&venda.ID,
 				&venda.ClienteID,
 				&venda.ClienteNome,
@@ -373,48 +324,26 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 				&venda.ValorPago,
 				&venda.Saldo,
 				&venda.TotalParcelas,
-			)
-
-			if err != nil {
-				http.Error(
-					w,
-					"Erro ao ler vendas: "+err.Error(),
-					http.StatusInternalServerError,
-				)
+			); err != nil {
+				http.Error(w, "Erro ao ler vendas: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 
-			// Garante compatibilidade com vendas antigas.
 			if venda.TotalParcelas <= 0 {
 				venda.TotalParcelas = 1
 			}
 
-			// A coluna vencimento representa o primeiro
-			// vencimento da venda.
 			venda.DataVencimento = venda.Vencimento
-
-			venda.Status = calcularStatusVenda(
-				venda.Vencimento,
-				venda.Saldo,
-			)
-
+			venda.Status = calcularStatusVenda(venda.Vencimento, venda.Saldo)
 			vendas = append(vendas, venda)
 		}
 
 		if err := rows.Err(); err != nil {
-			http.Error(
-				w,
-				"Erro ao percorrer vendas: "+err.Error(),
-				http.StatusInternalServerError,
-			)
+			http.Error(w, "Erro ao percorrer vendas: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		w.Header().Set(
-			"Content-Type",
-			"application/json",
-		)
-
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(vendas)
 	}
 }
@@ -422,46 +351,29 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 func DetalharVenda(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			http.Error(
-				w,
-				"Método não permitido",
-				http.StatusMethodNotAllowed,
-			)
+			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// Esperado:
-		// GET /vendas/9
+		usuarioID, ok := auth.UsuarioID(r)
+		if !ok {
+			http.Error(w, "Usuário não autenticado", http.StatusUnauthorized)
+			return
+		}
 
-		idTexto := strings.TrimPrefix(
-			r.URL.Path,
-			"/vendas/",
-		)
-
-		idTexto = strings.TrimSpace(idTexto)
-
-		if idTexto == "" {
-			http.Error(
-				w,
-				"Informe o ID da venda",
-				http.StatusBadRequest,
-			)
+		idTexto := strings.TrimSpace(strings.TrimPrefix(r.URL.Path, "/vendas/"))
+		if idTexto == "" || strings.Contains(idTexto, "/") {
+			http.Error(w, "Informe um ID de venda válido", http.StatusBadRequest)
 			return
 		}
 
 		vendaID, err := strconv.Atoi(idTexto)
-
 		if err != nil || vendaID <= 0 {
-			http.Error(
-				w,
-				"ID da venda inválido",
-				http.StatusBadRequest,
-			)
+			http.Error(w, "ID da venda inválido", http.StatusBadRequest)
 			return
 		}
 
 		var venda models.Venda
-
 		err = db.QueryRow(`
 			SELECT
 				v.id,
@@ -477,8 +389,10 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			FROM vendas v
 			LEFT JOIN clientes c
 				ON c.id = v.cliente_id
+				AND c.usuario_id = v.usuario_id
 			WHERE v.id = $1
-		`, vendaID).Scan(
+			  AND v.usuario_id = $2
+		`, vendaID, usuarioID).Scan(
 			&venda.ID,
 			&venda.ClienteID,
 			&venda.ClienteNome,
@@ -492,63 +406,41 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 		)
 
 		if err == sql.ErrNoRows {
-			http.Error(
-				w,
-				"Venda não encontrada",
-				http.StatusNotFound,
-			)
+			http.Error(w, "Venda não encontrada", http.StatusNotFound)
 			return
 		}
-
 		if err != nil {
-			http.Error(
-				w,
-				"Erro ao buscar venda: "+err.Error(),
-				http.StatusInternalServerError,
-			)
+			http.Error(w, "Erro ao buscar venda: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		if venda.TotalParcelas <= 0 {
 			venda.TotalParcelas = 1
 		}
-
 		venda.DataVencimento = venda.Vencimento
+		venda.Status = calcularStatusVenda(venda.Vencimento, venda.Saldo)
 
-		venda.Status = calcularStatusVenda(
-			venda.Vencimento,
-			venda.Saldo,
-		)
-
-		// ============================================================
-		// BUSCA OS ITENS DA VENDA
-		// ============================================================
-
+		// ITENS: a venda já foi validada como pertencente ao usuário.
 		rows, err := db.Query(`
 			SELECT
 				vi.id,
 				vi.venda_id,
 				vi.produto_id,
-				p.nome,
+				COALESCE(p.nome, '') AS produto_nome,
 				vi.quantidade,
 				vi.preco_unitario,
 				vi.subtotal
 			FROM venda_itens vi
 			LEFT JOIN produtos p
 				ON p.id = vi.produto_id
+				AND p.usuario_id = $2
 			WHERE vi.venda_id = $1
 			ORDER BY vi.id ASC
-		`, vendaID)
-
+		`, vendaID, usuarioID)
 		if err != nil {
-			http.Error(
-				w,
-				"Erro ao buscar itens da venda: "+err.Error(),
-				http.StatusInternalServerError,
-			)
+			http.Error(w, "Erro ao buscar itens da venda: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-
 		defer rows.Close()
 
 		type ItemVenda struct {
@@ -562,11 +454,9 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 		}
 
 		itens := []ItemVenda{}
-
 		for rows.Next() {
 			var item ItemVenda
-
-			err := rows.Scan(
+			if err := rows.Scan(
 				&item.ID,
 				&item.VendaID,
 				&item.ProdutoID,
@@ -574,33 +464,18 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 				&item.Quantidade,
 				&item.PrecoUnitario,
 				&item.Subtotal,
-			)
-
-			if err != nil {
-				http.Error(
-					w,
-					"Erro ao ler itens da venda: "+err.Error(),
-					http.StatusInternalServerError,
-				)
+			); err != nil {
+				http.Error(w, "Erro ao ler itens da venda: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-
 			itens = append(itens, item)
 		}
-
 		if err := rows.Err(); err != nil {
-			http.Error(
-				w,
-				"Erro ao percorrer itens da venda: "+err.Error(),
-				http.StatusInternalServerError,
-			)
+			http.Error(w, "Erro ao percorrer itens da venda: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// ============================================================
-		// BUSCA AS PARCELAS DA VENDA
-		// ============================================================
-
+		// PARCELAS
 		parcelasRows, err := db.Query(`
 			SELECT
 				id,
@@ -615,16 +490,10 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			WHERE venda_id = $1
 			ORDER BY numero_parcela ASC
 		`, vendaID)
-
 		if err != nil {
-			http.Error(
-				w,
-				"Erro ao buscar parcelas da venda: "+err.Error(),
-				http.StatusInternalServerError,
-			)
+			http.Error(w, "Erro ao buscar parcelas da venda: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-
 		defer parcelasRows.Close()
 
 		type ParcelaVenda struct {
@@ -639,11 +508,9 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 		}
 
 		parcelas := []ParcelaVenda{}
-
 		for parcelasRows.Next() {
 			var parcela ParcelaVenda
-
-			err := parcelasRows.Scan(
+			if err := parcelasRows.Scan(
 				&parcela.ID,
 				&parcela.VendaID,
 				&parcela.NumeroParcela,
@@ -652,32 +519,16 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 				&parcela.Vencimento,
 				&parcela.ValorPago,
 				&parcela.Status,
-			)
-
-			if err != nil {
-				http.Error(
-					w,
-					"Erro ao ler parcelas da venda: "+err.Error(),
-					http.StatusInternalServerError,
-				)
+			); err != nil {
+				http.Error(w, "Erro ao ler parcelas da venda: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
-
 			parcelas = append(parcelas, parcela)
 		}
-
 		if err := parcelasRows.Err(); err != nil {
-			http.Error(
-				w,
-				"Erro ao percorrer parcelas da venda: "+err.Error(),
-				http.StatusInternalServerError,
-			)
+			http.Error(w, "Erro ao percorrer parcelas da venda: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		// ============================================================
-		// RESPOSTA
-		// ============================================================
 
 		resposta := map[string]interface{}{
 			"venda":    venda,
@@ -685,11 +536,7 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			"parcelas": parcelas,
 		}
 
-		w.Header().Set(
-			"Content-Type",
-			"application/json",
-		)
-
+		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resposta)
 	}
 }

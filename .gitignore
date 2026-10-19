@@ -23,3 +23,6 @@ frontend/.env.*
 # Sistema
 .DS_Store
 Thumbs.db
+# Backups locais do banco de dados — não enviar ao GitHub
+/backup_quitai_antes_isolamento.dump
+/backup_quitai_antes_isolamento.sql

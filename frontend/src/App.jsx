@@ -2,6 +2,25 @@ import { useEffect, useState } from 'react'
 import './App.css'
 import Login from './Login'
 
+// Centraliza o envio do token JWT nas requisições à API.
+// Preserva os demais cabeçalhos, como Content-Type, definidos em cada chamada.
+async function fetchAutenticado(url, options = {}) {
+  const token =
+    localStorage.getItem('quitai_token') ||
+    sessionStorage.getItem('quitai_token')
+
+  const headers = new Headers(options.headers || {})
+
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+  })
+}
+
 function App() {
   const [autenticado, setAutenticado] = useState(() => {
     return Boolean(
@@ -25,6 +44,24 @@ function App() {
     return localStorage.getItem('quitai_confirmar_saida') !== 'false'
   })
   const [mostrarModalSaida, setMostrarModalSaida] = useState(false)
+  const [temaAtual, setTemaAtual] = useState(() => {
+    const salvo = localStorage.getItem('quitai_tema') || 'rosa'
+    return ['claro', 'rosa', 'escuro', 'automatico'].includes(salvo) ? salvo : 'rosa'
+  })
+  const [preferenciaEscuraSistema, setPreferenciaEscuraSistema] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
+  )
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return
+    const consulta = window.matchMedia('(prefers-color-scheme: dark)')
+    const atualizar = (evento) => setPreferenciaEscuraSistema(evento.matches)
+    setPreferenciaEscuraSistema(consulta.matches)
+    consulta.addEventListener?.('change', atualizar)
+    return () => consulta.removeEventListener?.('change', atualizar)
+  }, [])
+  const temaEfetivo = temaAtual === 'automatico'
+    ? (preferenciaEscuraSistema ? 'escuro' : 'claro')
+    : temaAtual
 
   const usuarioSalvo = (() => {
     try {
@@ -173,7 +210,7 @@ function App() {
 
     async function validarSessao() {
       try {
-        const resposta = await fetch(
+        const resposta = await fetchAutenticado(
           'http://localhost:8082/auth/me',
           {
             method: 'GET',
@@ -270,7 +307,7 @@ function App() {
       setCarregandoProdutos(true)
       setErroProdutos('')
 
-      const resposta = await fetch(
+      const resposta = await fetchAutenticado(
         'http://localhost:8082/produtos/listar'
       )
 
@@ -303,7 +340,7 @@ function App() {
       setCarregandoVendas(true)
       setErroVendas('')
 
-      const resposta = await fetch(
+      const resposta = await fetchAutenticado(
         'http://localhost:8082/vendas/listar'
       )
 
@@ -324,7 +361,7 @@ function App() {
         const detalhes = await Promise.all(
           vendasRecebidas.map(async (venda) => {
             try {
-              const respostaDetalhes = await fetch(
+              const respostaDetalhes = await fetchAutenticado(
                 `http://localhost:8082/vendas/${venda.id}`
               )
 
@@ -658,7 +695,7 @@ function App() {
       // 1. CRIAR A VENDA
       // -------------------------------------------------------
 
-      const respostaVenda = await fetch(
+      const respostaVenda = await fetchAutenticado(
         'http://localhost:8082/vendas',
         {
           method: 'POST',
@@ -711,7 +748,7 @@ function App() {
       // -------------------------------------------------------
 
       for (const item of itensNovaVenda) {
-        const respostaItem = await fetch(
+        const respostaItem = await fetchAutenticado(
           'http://localhost:8082/vendas/itens',
           {
             method: 'POST',
@@ -775,7 +812,7 @@ function App() {
       // -------------------------------------------------------
 
       const respostaDetalhes =
-        await fetch(
+        await fetchAutenticado(
           `http://localhost:8082/vendas/${vendaId}`
         )
 
@@ -827,7 +864,7 @@ function App() {
       setErroDetalhesVenda('')
       setVendaSelecionada(null)
 
-      const resposta = await fetch(
+      const resposta = await fetchAutenticado(
         `http://localhost:8082/vendas/${venda.id}`
       )
 
@@ -850,7 +887,7 @@ function App() {
 
       setVendaSelecionada(dados)
 
-      const respostaPagamentos = await fetch(
+      const respostaPagamentos = await fetchAutenticado(
         `http://localhost:8082/pagamentos?venda_id=${venda.id}`
       )
 
@@ -898,7 +935,7 @@ function App() {
     try {
       setExcluindoVenda(true)
       setErroExclusaoVenda('')
-      const resposta = await fetch(`http://localhost:8082/vendas/${vendaParaExcluir.id}`, { method: 'DELETE' })
+      const resposta = await fetchAutenticado(`http://localhost:8082/vendas/${vendaParaExcluir.id}`, { method: 'DELETE' })
       if (!resposta.ok) {
         const mensagem = await resposta.text()
         throw new Error(mensagem || 'Não foi possível excluir esta venda.')
@@ -1059,7 +1096,7 @@ function App() {
       setSalvandoPagamento(true)
       setErroPagamento('')
 
-      const resposta = await fetch(
+      const resposta = await fetchAutenticado(
         'http://localhost:8082/pagamentos',
         {
           method: 'POST',
@@ -1109,7 +1146,7 @@ function App() {
       })
 
       const respostaDetalhes =
-        await fetch(
+        await fetchAutenticado(
           `http://localhost:8082/vendas/${vendaSelecionada.venda.id}`
         )
 
@@ -1126,7 +1163,7 @@ function App() {
         dadosAtualizados
       )
 
-      const respostaPagamentos = await fetch(
+      const respostaPagamentos = await fetchAutenticado(
         `http://localhost:8082/pagamentos?venda_id=${vendaSelecionada.venda.id}`
       )
 
@@ -1272,7 +1309,7 @@ function App() {
         ? 'PUT'
         : 'POST'
 
-      const resposta = await fetch(
+      const resposta = await fetchAutenticado(
         url,
         {
           method: metodo,
@@ -1354,7 +1391,7 @@ function App() {
       setExcluindoProduto(true)
       setErroProdutos('')
 
-      const resposta = await fetch(
+      const resposta = await fetchAutenticado(
         `http://localhost:8082/produtos/${produtoParaExcluir.id}`,
         {
           method: 'DELETE',
@@ -1415,7 +1452,7 @@ function App() {
       setCarregandoClientes(true)
       setErroClientes('')
 
-      const resposta = await fetch(
+      const resposta = await fetchAutenticado(
         'http://localhost:8082/clientes/listar'
       )
 
@@ -1542,7 +1579,7 @@ function App() {
         ? 'PUT'
         : 'POST'
 
-      const resposta = await fetch(
+      const resposta = await fetchAutenticado(
         url,
         {
           method: metodo,
@@ -1626,7 +1663,7 @@ function App() {
       setExcluindoCliente(true)
       setErroClientes('')
 
-      const resposta = await fetch(
+      const resposta = await fetchAutenticado(
         `http://localhost:8082/clientes/${clienteExcluindo.id}`,
         {
           method: 'DELETE',
@@ -1862,7 +1899,96 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app tema-${temaEfetivo}`} data-tema={temaAtual}>
+      <style>{`
+        .app.tema-rosa { background: #fff0f6; min-height: 100vh; color: #382530; }
+        .app.tema-rosa .conteudo { background-color: #fff0f6 !important; }
+        .app.tema-rosa .secao { border-color: #efc7d9 !important; }
+        .app.tema-rosa .navegacao, .app.tema-rosa .topo { background: #fff7fb !important; }
+        .app.tema-escuro { background: #17171d !important; color: #f5edf2 !important; min-height: 100vh; color-scheme: dark; }
+        .app.tema-escuro .conteudo, .app.tema-escuro main { background: #17171d !important; color: #f5edf2 !important; }
+        .app.tema-escuro .topo, .app.tema-escuro .navegacao { background: #202027 !important; border-color: #39333d !important; }
+        .app.tema-escuro .secao, .app.tema-escuro section, .app.tema-escuro .card, .app.tema-escuro [class*='cartao'], .app.tema-escuro [class*='card'] { background-color: #24242c !important; border-color: #403641 !important; color: #f5edf2 !important; }
+        .app.tema-escuro h1, .app.tema-escuro h2, .app.tema-escuro h3, .app.tema-escuro h4, .app.tema-escuro p, .app.tema-escuro label, .app.tema-escuro strong, .app.tema-escuro span, .app.tema-escuro small, .app.tema-escuro th, .app.tema-escuro td { color: #f0e8ee; }
+        .app.tema-escuro input:not([type='checkbox']):not([type='radio']), .app.tema-escuro select, .app.tema-escuro textarea { background: #292831 !important; color: #fff !important; border-color: #514451 !important; }
+        .app.tema-escuro input::placeholder, .app.tema-escuro textarea::placeholder { color: #b9aab7 !important; }
+        .app.tema-escuro button:not(.nav-item) { border-color: #68445a; }
+        .app.tema-escuro .nav-item { color: #c8bdc7 !important; }
+        .app.tema-escuro .nav-item.ativo { color: #ff8db7 !important; }
+        .app.tema-escuro .config-divisor { border-color: #403641 !important; }
+        .app.tema-escuro .config-descricao { color: #c9bbc6 !important; }
+        .app.tema-escuro .quitai-configuracoes { background: #17171d !important; }
+        .app.tema-escuro table { color: #f5edf2 !important; }
+        .app.tema-escuro [role='dialog'] { background: #24242c !important; color: #f5edf2 !important; border-color: #403641 !important; }
+        .app.tema-escuro .config-tema-opcao[aria-pressed='true'] { background: #51283f !important; border-color: #e76da2 !important; color: #fff !important; }
+        /* Ajustes globais para cartões e estados vazios que usam estilos inline claros. */
+        .app.tema-escuro .vazio,
+        .app.tema-escuro .vazio-icone,
+        .app.tema-escuro [style*='background: rgb(255, 255, 255)'],
+        .app.tema-escuro [style*='background: rgb(255,255,255)'],
+        .app.tema-escuro [style*='background-color: rgb(255, 255, 255)'],
+        .app.tema-escuro [style*='background: #ffffff'],
+        .app.tema-escuro [style*='background: #fff'],
+        .app.tema-escuro [style*='backgroundColor: #ffffff'] {
+          background: #24242c !important;
+          color: #f5edf2 !important;
+          border-color: #403641 !important;
+        }
+        .app.tema-escuro .vazio h3,
+        .app.tema-escuro .vazio p,
+        .app.tema-escuro .vazio strong,
+        .app.tema-escuro .vazio span {
+          color: #f0e8ee !important;
+        }
+        .app.tema-escuro .vazio p,
+        .app.tema-escuro .vazio .descricao,
+        .app.tema-escuro [style*='color: rgb(238, 224, 233)'],
+        .app.tema-escuro [style*='color: #f0e4eb'],
+        .app.tema-escuro [style*='color: #eee0e9'] {
+          color: #c9bbc6 !important;
+        }
+        .app.tema-escuro .vazio-icone {
+          background: #3a2835 !important;
+        }
+        .app.tema-escuro button,
+        .app.tema-escuro [role='button'] {
+          color: #f5edf2;
+        }
+        .app.tema-escuro .vazio button {
+          background: #e94b91 !important;
+          color: #fff !important;
+          border-color: #e94b91 !important;
+        }
+        /* Vendas: abas e cartões precisam respeitar o tema escuro mesmo quando usam estilos inline. */
+        .app.tema-escuro .secao > div[style*="grid-template-columns: 1fr 1fr"] {
+          background: #302a34 !important;
+          border: 1px solid #443744 !important;
+        }
+        .app.tema-escuro .secao > div[style*="grid-template-columns: 1fr 1fr"] button {
+          background: transparent !important;
+          color: #d8cbd5 !important;
+          box-shadow: none !important;
+          border-color: transparent !important;
+        }
+        .app.tema-escuro .secao > div[style*="grid-template-columns: 1fr 1fr"] button[style*="background: #ffffff"] {
+          background: #513047 !important;
+          color: #ffffff !important;
+          border: 1px solid #d85b98 !important;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, .22) !important;
+        }
+        .app.tema-escuro .secao > div[style*="grid-template-columns: 1fr 1fr"] button[style*="background: #ffffff"]:last-child {
+          color: #ffffff !important;
+        }
+        .app.tema-escuro .secao .titulo-secao button {
+          background: #302a34 !important;
+          color: #ff8db7 !important;
+          border: 1px solid #594052 !important;
+        }
+        .app.tema-escuro .botao-notificacao {
+          background: #302a34 !important;
+          border-color: #594052 !important;
+        }
+      `}</style>
       {mostrarModalSaida && (
         <div
           onClick={() => setMostrarModalSaida(false)}
@@ -3649,11 +3775,9 @@ function App() {
           <header className="topo">
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: 0 }}>
-              <img src="/quitai-logo.png" alt="Quita! Vendas simples, recebimentos organizados" style={{ width: 'clamp(104px, 17vw, 158px)', height: 'auto', maxHeight: '88px', objectFit: 'contain', borderRadius: '12px', flexShrink: 0 }} />
               <div style={{ minWidth: 0 }}>
                 <span className="saudacao">Olá! 👋</span>
                 <h1>Minhas Vendas</h1>
-                <span style={{ color: '#c43f82', fontSize: '12px', fontWeight: 600, letterSpacing: '.2px' }}>Recebimentos organizados</span>
               </div>
             </div>
 
@@ -6456,18 +6580,86 @@ function App() {
             )}
 
             {subTelaMais === 'configuracoes' && (
-              <section className="secao">
-                <button type="button" onClick={() => setSubTelaMais('menu')} style={{ border: 0, background: 'transparent', color: '#c43f6d', padding: '0 0 18px', cursor: 'pointer', fontWeight: 700 }}>
+              <section
+                className="secao quitai-configuracoes"
+                style={{
+                  width: '100%',
+                  maxWidth: '780px',
+                  boxSizing: 'border-box',
+                  margin: '0 auto',
+                  padding: '24px clamp(18px, 4vw, 32px)',
+                  textAlign: 'left',
+                  background: temaEfetivo === 'escuro' ? '#19181f' : temaEfetivo === 'rosa' ? '#fff5f9' : '#ffffff',
+                  border: temaEfetivo === 'escuro' ? '1px solid #39323d' : '1px solid #f4e3eb',
+                  borderRadius: '20px',
+                  boxShadow: temaEfetivo === 'escuro' ? '0 8px 24px rgba(0, 0, 0, 0.18)' : '0 8px 24px rgba(111, 45, 77, 0.045)',
+                }}
+              >
+                <style>{`
+                  .quitai-configuracoes h2 { color: ${temaEfetivo === 'escuro' ? '#f7edf2' : '#382530'} !important; }
+                  .quitai-configuracoes button:focus:not(:focus-visible) { outline: none !important; }
+                  .quitai-configuracoes .config-opcao { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+                  .quitai-configuracoes .config-texto { min-width: 0; flex: 1; }
+                  .quitai-configuracoes .config-descricao { display: block; color: ${temaEfetivo === 'escuro' ? '#c8bdc8' : '#786873'}; font-size: 14px; line-height: 1.55; }
+                  .quitai-configuracoes .config-divisor { border-top: 1px solid ${temaEfetivo === 'escuro' ? '#39323d' : '#f0e1e8'}; }
+                  @media (max-width: 520px) {
+                    .quitai-configuracoes { padding: 20px 16px !important; border-radius: 16px !important; }
+                    .quitai-configuracoes .config-opcao { gap: 12px; }
+                    .quitai-configuracoes .config-descricao { font-size: 13px; }
+                  }
+                `}</style>
+
+                <button
+                  type="button"
+                  onClick={() => setSubTelaMais('menu')}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    border: '0',
+                    borderRadius: '999px',
+                    background: temaEfetivo === 'escuro' ? '#fbeaf2' : '#fff0f6',
+                    color: '#bd2f70',
+                    padding: '10px 14px',
+                    marginBottom: '22px',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    fontSize: '14px',
+                  }}
+                >
                   ← Voltar para Mais opções
                 </button>
-                <h2 style={{ margin: '0 0 6px' }}>Preferências</h2>
-                <p style={{ color: '#777', fontSize: '14px', margin: '0 0 18px' }}>
-                  Escolha como o aplicativo deve se comportar neste dispositivo.
-                </p>
-                <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', padding: '16px 0', borderTop: '1px solid #f1e4e9', borderBottom: '1px solid #f1e4e9', cursor: 'pointer' }}>
-                  <span>
-                    <strong style={{ display: 'block', marginBottom: '5px' }}>Confirmar antes de sair</strong>
-                    <span style={{ color: '#777', fontSize: '13px', lineHeight: 1.4 }}>Evita encerrar a sessão por toque acidental.</span>
+
+                <div style={{ marginBottom: '22px' }}>
+                  <span style={{
+                    display: 'inline-block',
+                    color: '#c13b78',
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    letterSpacing: '1.2px',
+                    textTransform: 'uppercase',
+                    marginBottom: '7px',
+                  }}>
+                    PERSONALIZAÇÃO
+                  </span>
+                  <h2 style={{ margin: '0 0 8px', color: '#382530', fontSize: '25px', lineHeight: 1.2 }}>
+                    Preferências
+                  </h2>
+                  <p style={{ color: '#786873', fontSize: '14px', lineHeight: 1.6, margin: 0 }}>
+                    Escolha como o aplicativo deve se comportar neste dispositivo.
+                  </p>
+                </div>
+
+                <div className="config-divisor" />
+
+                <label className="config-opcao" style={{ padding: '20px 0', cursor: 'pointer' }}>
+                  <span className="config-texto">
+                    <strong style={{ display: 'block', color: temaEfetivo === 'escuro' ? '#f7edf2' : '#382530', fontSize: '16px', marginBottom: '6px' }}>
+                      Confirmar antes de sair
+                    </strong>
+                    <span className="config-descricao">
+                      Evita encerrar a sessão por toque acidental.
+                    </span>
                   </span>
                   <input
                     type="checkbox"
@@ -6477,17 +6669,101 @@ function App() {
                       setConfirmarSaida(ativado)
                       localStorage.setItem('quitai_confirmar_saida', String(ativado))
                     }}
-                    style={{ width: '20px', height: '20px', accentColor: '#d95f8c', flexShrink: 0 }}
+                    aria-label="Confirmar antes de sair"
+                    style={{
+                      width: '21px',
+                      height: '21px',
+                      accentColor: '#d94f88',
+                      flexShrink: 0,
+                      cursor: 'pointer',
+                    }}
                   />
                 </label>
-                <div style={{ padding: '16px 0' }}>
-                  <strong style={{ display: 'block', marginBottom: '5px' }}>Aparência</strong>
-                  <span style={{ color: '#777', fontSize: '13px' }}>Tema rosa-claro do QuitaAí</span>
-                  <span style={{ display: 'block', marginTop: '8px', background: '#fff1f5', border: '1px solid #f0cbd7', color: '#c43f6d', borderRadius: '10px', padding: '9px 12px', fontSize: '13px' }}>Tema atual · Claro</span>
+
+                <div className="config-divisor" />
+
+                <div style={{ padding: '20px 0' }}>
+                  <div style={{ marginBottom: '14px' }}>
+                    <strong style={{ display: 'block', color: temaEfetivo === 'escuro' ? '#f7edf2' : '#382530', fontSize: '16px', marginBottom: '6px' }}>Aparência</strong>
+                    <span className="config-descricao">Escolha o tema mais confortável para você.</span>
+                  </div>
+                  <div className="config-temas" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px' }}>
+                    {[
+                      { id: 'rosa', nome: 'Rosa', simbolo: '✦', detalhe: 'Rosa-claro' },
+                      { id: 'claro', nome: 'Claro', simbolo: '☀', detalhe: 'Branco e leve' },
+                      { id: 'escuro', nome: 'Escuro', simbolo: '☾', detalhe: 'Conforto noturno' },
+                      { id: 'automatico', nome: 'Automático', simbolo: '◐', detalhe: 'Segue o dispositivo' },
+                    ].map((opcao) => {
+                      const selecionado = temaAtual === opcao.id
+                      return (
+                        <button key={opcao.id} type="button" className="config-tema-opcao" aria-pressed={selecionado}
+                          onClick={() => { setTemaAtual(opcao.id); localStorage.setItem('quitai_tema', opcao.id) }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left', minWidth: 0,
+                            padding: '12px', borderRadius: '13px', cursor: 'pointer',
+                            border: selecionado ? '1px solid #e45b98' : temaEfetivo === 'escuro' ? '1px solid #49414d' : '1px solid #f0dce5',
+                            background: temaEfetivo === 'escuro' ? (selecionado ? '#49263b' : '#292730') : (selecionado ? '#ffe3ef' : '#fffafd'),
+                            color: temaEfetivo === 'escuro' ? '#f8edf3' : '#49313e', boxShadow: selecionado ? '0 0 0 1px rgba(228,91,152,0.10)' : 'none' }}>
+                          <span aria-hidden="true" style={{ display: 'grid', placeItems: 'center', width: '34px', height: '34px', flexShrink: 0,
+                            borderRadius: '10px', background: opcao.id === 'escuro' ? '#292831' : '#f9dce8',
+                            color: opcao.id === 'escuro' ? '#ff9fc2' : '#b83270', fontSize: '18px' }}>{opcao.simbolo}</span>
+                          <span style={{ minWidth: 0 }}>
+                            <strong style={{ display: 'block', fontSize: '13px', marginBottom: '3px' }}>{opcao.nome}</strong>
+                            <span style={{ display: 'block', fontSize: '11px', lineHeight: 1.35, opacity: 0.8 }}>{opcao.detalhe}</span>
+                          </span>
+                          {selecionado && <span aria-hidden="true" style={{ marginLeft: 'auto', color: '#c13b78', fontWeight: 800 }}>✓</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '14px', padding: '13px 14px',
+                    background: temaEfetivo === 'escuro' ? '#29242e' : temaEfetivo === 'rosa' ? '#ffe3ef' : '#fff4f8',
+                    border: temaEfetivo === 'escuro' ? '1px solid #514354' : '1px solid #f4dce7', borderRadius: '13px' }}>
+                    <span aria-hidden="true" style={{ width: '34px', height: '34px', borderRadius: '10px',
+                      background: temaEfetivo === 'escuro' ? '#403044' : '#f9dce8', color: '#b83270',
+                      display: 'grid', placeItems: 'center', fontSize: '18px', flexShrink: 0 }}>
+                      {temaEfetivo === 'escuro' ? '☾' : temaEfetivo === 'rosa' ? '✦' : '☀'}
+                    </span>
+                    <span style={{ color: temaEfetivo === 'escuro' ? '#f0e8ee' : '#765c6a', fontSize: '13px', lineHeight: 1.5 }}>
+                      {temaAtual === 'automatico'
+                        ? `Tema automático ativo: aparência ${temaEfetivo === 'escuro' ? 'escura' : 'clara'} conforme seu dispositivo.`
+                        : `Tema ${temaAtual === 'escuro' ? 'escuro' : temaAtual === 'rosa' ? 'rosa' : 'claro'} ativo. Sua escolha fica salva neste dispositivo.`}
+                    </span>
+                  </div>
                 </div>
-                <div style={{ padding: '14px 0', borderTop: '1px solid #f1e4e9' }}>
-                  <strong style={{ display: 'block', marginBottom: '5px' }}>Notificações</strong>
-                  <span style={{ color: '#777', fontSize: '13px', lineHeight: 1.5 }}>Avisos internos sobre vencimentos próximos e pagamentos atrasados aparecem na central de notificações, pelo sino no cabeçalho.</span>
+
+                <div className="config-divisor" />
+
+                <div style={{ paddingTop: '20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{
+                      width: '34px',
+                      height: '34px',
+                      display: 'grid',
+                      placeItems: 'center',
+                      borderRadius: '10px',
+                      background: '#fff0f6',
+                      color: '#b83270',
+                      fontSize: '17px',
+                      flexShrink: 0,
+                    }}>♧</span>
+                      <strong style={{ color: '#382530', fontSize: '16px' }}>Notificações</strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setNotificacoesAbertas(true)}
+                      style={{
+                        border: '1px solid #f0c4d7', background: '#fff0f6', color: '#b83270',
+                        borderRadius: '10px', padding: '9px 12px', fontSize: '13px', fontWeight: 700,
+                        cursor: 'pointer', whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Ver avisos
+                    </button>
+                  </div>
+                  <p style={{ color: '#786873', fontSize: '14px', lineHeight: 1.65, margin: 0 }}>
+                    Consulte os avisos sobre vencimentos próximos e pagamentos atrasados.
+                  </p>
                 </div>
               </section>
             )}
@@ -6498,6 +6774,11 @@ function App() {
       {/* =====================================================
           NAVEGAÇÃO INFERIOR
       ===================================================== */}
+
+      <style>{`
+        .navegacao .nav-item:focus:not(:focus-visible) { outline: none !important; box-shadow: none !important; }
+        .navegacao .nav-item:focus-visible { outline: 2px solid #d94f88; outline-offset: 2px; }
+      `}</style>
 
       <nav className="navegacao">
 

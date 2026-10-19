@@ -30,13 +30,9 @@ func main() {
 	if err != nil {
 		log.Fatal("Erro ao conectar ao PostgreSQL:", err)
 	}
-
 	defer db.Close()
 
-	// ==========================================
 	// AUTENTICAÇÃO
-	// ==========================================
-
 	http.HandleFunc("/auth/cadastro", auth.Cadastro(db))
 	http.HandleFunc("/auth/login", auth.Login(db))
 	http.Handle("/auth/me", auth.AuthMiddleware(auth.Me(db)))
@@ -48,74 +44,53 @@ func main() {
 	http.HandleFunc("/auth/recuperar-senha", auth.SolicitarRecuperacao(db))
 	http.HandleFunc("/auth/redefinir-senha", auth.RedefinirSenha(db))
 	http.HandleFunc("/auth/google", auth.LoginGoogle(db))
-	// ==========================================
-	// PRODUTOS
-	// ==========================================
 
-	http.HandleFunc("/produtos", handlers.CriarProduto(db))
-	http.HandleFunc("/produtos/listar", handlers.ListarProdutos(db))
+	// PRODUTOS - ROTAS PROTEGIDAS
+	http.Handle("/produtos", auth.AuthMiddleware(handlers.CriarProduto(db)))
+	http.Handle("/produtos/listar", auth.AuthMiddleware(handlers.ListarProdutos(db)))
 
-	http.HandleFunc("/produtos/", func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/produtos/", auth.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPut:
 			handlers.EditarProduto(db)(w, r)
-
 		case http.MethodDelete:
 			handlers.ExcluirProduto(db)(w, r)
-
 		default:
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 		}
-	})
+	})))
 
-	// ==========================================
-	// CLIENTES
-	// ==========================================
+	// CLIENTES - ROTAS PROTEGIDAS
+	http.Handle("/clientes", auth.AuthMiddleware(handlers.CriarCliente(db)))
+	http.Handle("/clientes/listar", auth.AuthMiddleware(handlers.ListarClientes(db)))
 
-	http.HandleFunc("/clientes", handlers.CriarCliente(db))
-	http.HandleFunc("/clientes/listar", handlers.ListarClientes(db))
-
-	http.HandleFunc("/clientes/", func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/clientes/", auth.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPut:
 			handlers.EditarCliente(db)(w, r)
-
 		case http.MethodDelete:
 			handlers.ExcluirCliente(db)(w, r)
-
 		default:
 			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 		}
-	})
+	})))
 
-	// ==========================================
-	// VENDAS
-	// ==========================================
+	// VENDAS - ROTAS PROTEGIDAS
+	http.Handle("/vendas", auth.AuthMiddleware(handlers.CriarVenda(db)))
+	http.Handle("/vendas/listar", auth.AuthMiddleware(handlers.ListarVendas(db)))
+	http.Handle("/vendas/itens", auth.AuthMiddleware(handlers.AdicionarItemVenda(db)))
 
-	http.HandleFunc("/vendas", handlers.CriarVenda(db))
-	http.HandleFunc("/vendas/listar", handlers.ListarVendas(db))
-	http.HandleFunc("/vendas/itens", handlers.AdicionarItemVenda(db))
-
-	http.HandleFunc("/vendas/", func(w http.ResponseWriter, r *http.Request) {
+	http.Handle("/vendas/", auth.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodDelete {
 			handlers.ExcluirVenda(db)(w, r)
 			return
 		}
-
 		handlers.DetalharVenda(db)(w, r)
-	})
+	})))
 
-	// ==========================================
-	// PAGAMENTOS
-	// ==========================================
-
-	http.HandleFunc("/pagamentos", handlers.RegistrarPagamento(db))
-
-	// ==========================================
-	// INICIALIZAÇÃO DO SERVIDOR
-	// ==========================================
+	// PAGAMENTOS - ROTA PROTEGIDA
+	http.Handle("/pagamentos", auth.AuthMiddleware(handlers.RegistrarPagamento(db)))
 
 	fmt.Println("QuitaAí API funcionando na porta 8082")
-
 	log.Fatal(http.ListenAndServe(":8082", cors(http.DefaultServeMux)))
 }

@@ -3,7 +3,10 @@ import './Login.css'
 import logoQuitaAi from './assets/quitai-logo.svg'
 
 function Login({ onLogin }) {
+  const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
+  const [confirmarSenhaCadastro, setConfirmarSenhaCadastro] = useState('')
+  const [modoCadastro, setModoCadastro] = useState(false)
   const [senha, setSenha] = useState('')
   const [mostrarSenha, setMostrarSenha] = useState(false)
   const [lembrar, setLembrar] = useState(false)
@@ -228,9 +231,79 @@ function Login({ onLogin }) {
     }
   }
 
-  function criarConta(event) {
+  async function criarConta(event) {
     event.preventDefault()
-    setErro('O cadastro ainda não está conectado a esta tela.')
+    setErro('')
+    setMensagem('')
+
+    if (!nome.trim()) {
+      setErro('Informe seu nome.')
+      return
+    }
+    if (!email.trim()) {
+      setErro('Informe seu e-mail.')
+      return
+    }
+    if (senha.length < 6) {
+      setErro('A senha deve ter pelo menos 6 caracteres.')
+      return
+    }
+    if (senha !== confirmarSenhaCadastro) {
+      setErro('As senhas não são iguais.')
+      return
+    }
+
+    try {
+      setCarregando(true)
+      const resposta = await fetch('http://localhost:8082/auth/cadastro', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          nome: nome.trim(),
+          email: email.trim(),
+          senha,
+        }),
+      })
+
+      const dados = await resposta.json().catch(() => ({}))
+      if (!resposta.ok) {
+        throw new Error(
+          dados.mensagem ||
+            dados.erro ||
+            'Não foi possível criar sua conta. Confira os dados e tente novamente.'
+        )
+      }
+
+      // Se a API já devolver token e usuário, inicia a sessão imediatamente.
+      if (dados.token && dados.usuario) {
+        salvarSessao(dados)
+        return
+      }
+
+      setModoCadastro(false)
+      setSenha('')
+      setConfirmarSenhaCadastro('')
+      setMensagem(
+        dados.mensagem ||
+          'Conta criada com sucesso! Entre com seu e-mail e sua senha.'
+      )
+    } catch (error) {
+      setErro(
+        error.message ||
+          'Não foi possível conectar ao servidor. Verifique se o backend está funcionando na porta 8082.'
+      )
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  function alternarModoCadastro() {
+    setModoCadastro((atual) => !atual)
+    setErro('')
+    setMensagem('')
   }
 
   return (
@@ -244,7 +317,7 @@ function Login({ onLogin }) {
             <img
               src={logoQuitaAi}
               alt="Logo QuitaAí"
-              className="quitai-logo.svg"
+              className="login-logo-svg"
             />
 
             <div className="login-marca-texto">
@@ -255,11 +328,35 @@ function Login({ onLogin }) {
         </header>
 
         <div className="login-introducao">
-          <h2>Bem-vinda de volta!</h2>
-          <p>Entre na sua conta para continuar.</p>
+          <h2>{modoCadastro ? 'Crie sua conta' : 'Bem-vinda de volta!'}</h2>
+          <p>
+            {modoCadastro
+              ? 'Cadastre-se para organizar suas vendas e recebimentos.'
+              : 'Entre na sua conta para continuar.'}
+          </p>
         </div>
 
-        <form className="login-formulario" onSubmit={entrar}>
+        <form
+          className="login-formulario"
+          onSubmit={modoCadastro ? criarConta : entrar}
+        >
+          {modoCadastro && (
+            <div className="login-grupo">
+              <label htmlFor="nome-cadastro">Nome completo</label>
+              <input
+                id="nome-cadastro"
+                name="nome"
+                type="text"
+                placeholder="Digite seu nome"
+                autoComplete="name"
+                value={nome}
+                onChange={(event) => setNome(event.target.value)}
+                required
+                disabled={carregando}
+              />
+            </div>
+          )}
+
           <div className="login-grupo">
             <label htmlFor="email">E-mail</label>
 
@@ -313,7 +410,7 @@ function Login({ onLogin }) {
                 name="senha"
                 type={mostrarSenha ? 'text' : 'password'}
                 placeholder="Digite sua senha"
-                autoComplete="current-password"
+                autoComplete={modoCadastro ? "new-password" : "current-password"}
                 value={senha}
                 onChange={(event) => setSenha(event.target.value)}
                 required
@@ -346,6 +443,24 @@ function Login({ onLogin }) {
             </div>
           </div>
 
+          {modoCadastro && (
+            <div className="login-grupo">
+              <label htmlFor="confirmar-senha-cadastro">Confirmar senha</label>
+              <input
+                id="confirmar-senha-cadastro"
+                name="confirmarSenha"
+                type={mostrarSenha ? 'text' : 'password'}
+                placeholder="Digite a senha novamente"
+                autoComplete="new-password"
+                value={confirmarSenhaCadastro}
+                onChange={(event) => setConfirmarSenhaCadastro(event.target.value)}
+                required
+                minLength={6}
+                disabled={carregando}
+              />
+            </div>
+          )}
+
           {erro && (
             <div className="login-erro" role="alert">
               {erro}
@@ -355,6 +470,7 @@ function Login({ onLogin }) {
             <div className="login-sucesso" role="status">{mensagem}</div>
           )}
 
+          {!modoCadastro && (
           <div className="login-opcoes">
             <label className="login-checkbox">
               <input
@@ -377,16 +493,21 @@ function Login({ onLogin }) {
               Esqueci minha senha
             </button>
           </div>
+          )}
 
           <button
             type="submit"
             className="login-botao-entrar"
             disabled={carregando}
           >
-            {carregando ? 'Entrando...' : 'Entrar'}
+            {carregando
+              ? (modoCadastro ? 'Criando conta...' : 'Entrando...')
+              : (modoCadastro ? 'Criar conta' : 'Entrar')}
           </button>
         </form>
 
+        {!modoCadastro && (
+        <>
         <div className="login-divisor">
           <span></span>
           <strong>ou</strong>
@@ -402,12 +523,16 @@ function Login({ onLogin }) {
           )}
           {googleCarregando && <p role="status">Conectando com Google...</p>}
         </div>
+        </>
+        )}
 
         <div className="login-criar-conta">
-          <span>Ainda não possui uma conta?</span>
+          <span>
+            {modoCadastro ? 'Já possui uma conta?' : 'Ainda não possui uma conta?'}
+          </span>
 
-          <button type="button" onClick={criarConta}>
-            Criar minha conta
+          <button type="button" onClick={alternarModoCadastro} disabled={carregando}>
+            {modoCadastro ? 'Entrar' : 'Criar minha conta'}
           </button>
         </div>
 
@@ -464,8 +589,15 @@ function Login({ onLogin }) {
           </div>
         )}
 
-        <footer className="login-rodape">
-          © 2026 QuitaAí · Gestão de vendas e recebimentos
+        <footer class="login-rodape">
+           <span>© 2026 Quitaí</span>
+           <span class="login-rodape-ponto">·</span>
+           <a href="#termos">Termos</a>
+           <span class="login-rodape-ponto">·</span>
+          <a href="#privacidade">Privacidade</a>
+          <span class="login-rodape-ponto">·</span>
+          <a href="#suporte">Suporte</a>
+          <span class="login-rodape-versao">v1.0.0</span>
         </footer>
       </section>
     </main>
