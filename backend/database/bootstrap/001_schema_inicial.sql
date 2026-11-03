@@ -1,10 +1,14 @@
+
 -- QuitaAi | Instalacao inicial do PostgreSQL
 -- Destinado exclusivamente a bancos novos e vazios.
 -- NAO executar no banco local existente.
--- NAO executar em producao antes da validacao em banco de testes.
--- Este arquivo ainda esta em preparacao e nao deve ser executado.
+-- NAO executar em producao antes da validacao final.
+-- Estrutura com protecoes de integridade financeira.
 
--- 1. Usuarios e permissoes
+-- =====================================================
+-- 1. USUARIOS E PERMISSOES
+-- =====================================================
+
 CREATE TABLE usuarios (
     id SERIAL PRIMARY KEY,
     nome VARCHAR(150) NOT NULL,
@@ -25,7 +29,10 @@ CREATE UNIQUE INDEX idx_usuarios_email_lower
 COMMENT ON COLUMN usuarios.foto_perfil_url IS
     'Caminho relativo da foto de perfil armazenada no servidor; NULL quando nao cadastrada.';
 
--- 2. Produtos vinculados a cada revendedora
+-- =====================================================
+-- 2. PRODUTOS VINCULADOS A CADA REVENDEDORA
+-- =====================================================
+
 CREATE TABLE produtos (
     id SERIAL PRIMARY KEY,
     nome VARCHAR(150) NOT NULL,
@@ -43,7 +50,10 @@ CREATE TABLE produtos (
 CREATE UNIQUE INDEX idx_produtos_usuario_codigo
     ON produtos (usuario_id, codigo);
 
--- 3. Clientes vinculados a cada revendedora
+-- =====================================================
+-- 3. CLIENTES VINCULADOS A CADA REVENDEDORA
+-- =====================================================
+
 CREATE TABLE clientes (
     id SERIAL PRIMARY KEY,
     nome VARCHAR(150) NOT NULL,
@@ -56,7 +66,10 @@ CREATE TABLE clientes (
     CONSTRAINT clientes_id_usuario_id_unique UNIQUE (id, usuario_id)
 );
 
--- 4. Vendas vinculadas a clientes e revendedoras
+-- =====================================================
+-- 4. VENDAS VINCULADAS A CLIENTES E REVENDEDORAS
+-- =====================================================
+
 CREATE TABLE vendas (
     id SERIAL PRIMARY KEY,
     cliente_id INTEGER NOT NULL,
@@ -77,7 +90,10 @@ CREATE TABLE vendas (
         REFERENCES clientes(id, usuario_id)
 );
 
--- 5. Itens vinculados a vendas e produtos
+-- =====================================================
+-- 5. ITENS VINCULADOS A VENDAS E PRODUTOS
+-- =====================================================
+
 CREATE TABLE venda_itens (
     id SERIAL PRIMARY KEY,
     venda_id INTEGER NOT NULL
@@ -91,7 +107,10 @@ CREATE TABLE venda_itens (
     subtotal NUMERIC(10,2) NOT NULL CHECK (subtotal >= 0)
 );
 
--- 6. Parcelas vinculadas às vendas
+-- =====================================================
+-- 6. PARCELAS VINCULADAS AS VENDAS
+-- =====================================================
+
 CREATE TABLE parcelas (
     id SERIAL PRIMARY KEY,
     venda_id INTEGER NOT NULL
@@ -115,7 +134,11 @@ CREATE TABLE parcelas (
         CHECK (numero_parcela <= total_parcelas),
 
     CONSTRAINT parcelas_valor_pago_valido
-        CHECK (valor_pago >= 0 AND valor_pago <= valor)
+        CHECK (valor_pago >= 0 AND valor_pago <= valor),
+
+    -- Necessario para validar a parcela dentro da mesma venda.
+    CONSTRAINT parcelas_venda_id_id_unique
+        UNIQUE (venda_id, id)
 );
 
 CREATE INDEX idx_parcelas_venda_id
@@ -124,22 +147,39 @@ CREATE INDEX idx_parcelas_venda_id
 CREATE INDEX idx_parcelas_vencimento
     ON parcelas(vencimento);
 
--- 7. Pagamentos vinculados a vendas e parcelas
+-- =====================================================
+-- 7. PAGAMENTOS E PROTECAO DO HISTORICO FINANCEIRO
+-- =====================================================
+
 CREATE TABLE pagamentos (
     id SERIAL PRIMARY KEY,
+
+    -- Impede exclusao de venda com pagamentos registrados.
     venda_id INTEGER NOT NULL
         CONSTRAINT pagamentos_venda_id_fkey
-        REFERENCES vendas(id) ON DELETE CASCADE,
+        REFERENCES vendas(id) ON DELETE RESTRICT,
+
     valor NUMERIC(10,2) NOT NULL CHECK (valor > 0),
+
     data_pagamento DATE NOT NULL DEFAULT CURRENT_DATE,
+
     forma_pagamento VARCHAR(20) NOT NULL DEFAULT 'PIX'
         CHECK (forma_pagamento IN ('PIX', 'ESPECIE')),
-    parcela_id INTEGER
-        CONSTRAINT pagamentos_parcela_id_fkey
-        REFERENCES parcelas(id) ON DELETE CASCADE
+
+    parcela_id INTEGER,
+
+    -- Garante que a parcela pertence a mesma venda.
+    -- Impede exclusao de parcela com pagamento associado.
+    CONSTRAINT pagamentos_venda_parcela_fkey
+        FOREIGN KEY (venda_id, parcela_id)
+        REFERENCES parcelas(venda_id, id)
+        ON DELETE RESTRICT
 );
 
--- 8. Solicitacoes da Central de Suporte
+-- =====================================================
+-- 8. SOLICITACOES DA CENTRAL DE SUPORTE
+-- =====================================================
+
 CREATE TABLE suporte_solicitacoes (
     id BIGSERIAL PRIMARY KEY,
     revendedora_id INTEGER NOT NULL
@@ -158,7 +198,10 @@ CREATE INDEX idx_suporte_solicitacoes_revendedora
 CREATE INDEX idx_suporte_solicitacoes_atualizacao
     ON suporte_solicitacoes(atualizado_em DESC);
 
--- 9. Mensagens da Central de Suporte
+-- =====================================================
+-- 9. MENSAGENS DA CENTRAL DE SUPORTE
+-- =====================================================
+
 CREATE TABLE suporte_mensagens (
     id BIGSERIAL PRIMARY KEY,
     solicitacao_id BIGINT NOT NULL
@@ -175,7 +218,10 @@ CREATE TABLE suporte_mensagens (
 CREATE INDEX idx_suporte_mensagens_solicitacao
     ON suporte_mensagens(solicitacao_id, id);
 
--- 10. Codigos de recuperacao de senha
+-- =====================================================
+-- 10. CODIGOS DE RECUPERACAO DE SENHA
+-- =====================================================
+
 CREATE TABLE codigos_recuperacao_senha (
     id BIGSERIAL PRIMARY KEY,
     usuario_id INTEGER NOT NULL
@@ -193,7 +239,10 @@ CREATE INDEX idx_codigos_recuperacao_usuario
 CREATE INDEX idx_codigos_recuperacao_expira
     ON codigos_recuperacao_senha(expira_em);
 
--- 11. Configuracao de manutencao
+-- =====================================================
+-- 11. CONFIGURACAO DE MANUTENCAO
+-- =====================================================
+
 CREATE TABLE sistema_configuracao (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     manutencao BOOLEAN NOT NULL DEFAULT FALSE,
@@ -203,7 +252,10 @@ CREATE TABLE sistema_configuracao (
 INSERT INTO sistema_configuracao (id)
 VALUES (1);
 
--- 12. Comunicados do sistema
+-- =====================================================
+-- 12. COMUNICADOS DO SISTEMA
+-- =====================================================
+
 CREATE TABLE sistema_avisos (
     id BIGSERIAL PRIMARY KEY,
     titulo VARCHAR(160) NOT NULL,

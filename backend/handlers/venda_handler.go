@@ -79,6 +79,23 @@ func ExcluirVenda(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Impede a exclusao de vendas com historico de pagamentos.
+		// A verificacao ocorre antes de qualquer alteracao no estoque.
+		var possuiPagamentos bool
+		err = tx.QueryRow(`
+			SELECT EXISTS (
+				SELECT 1 FROM pagamentos WHERE venda_id = $1
+			)
+		`, vendaID).Scan(&possuiPagamentos)
+		if err != nil {
+			http.Error(w, "Não foi possível verificar os pagamentos da venda.", http.StatusInternalServerError)
+			return
+		}
+		if possuiPagamentos {
+			http.Error(w, "Esta venda possui pagamentos registrados e não pode ser excluída.", http.StatusBadRequest)
+			return
+		}
+
 		// Devolve o estoque apenas dos produtos pertencentes ao usuário.
 		_, err = tx.Exec(`
 			UPDATE produtos p
@@ -95,14 +112,6 @@ func ExcluirVenda(db *sql.DB) http.HandlerFunc {
 		`, vendaID, usuarioID)
 		if err != nil {
 			http.Error(w, "Não foi possível devolver os produtos ao estoque. A venda não foi excluída.", http.StatusInternalServerError)
-			return
-		}
-
-		if _, err = tx.Exec(
-			"DELETE FROM pagamentos WHERE venda_id = $1",
-			vendaID,
-		); err != nil {
-			http.Error(w, "Não foi possível remover os pagamentos relacionados. A venda não foi excluída.", http.StatusInternalServerError)
 			return
 		}
 
