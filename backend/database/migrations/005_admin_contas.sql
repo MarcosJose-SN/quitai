@@ -19,3 +19,5 @@ BEGIN
             CHECK (perfil IN ('admin', 'revendedora'));
     END IF;
 END $$;
+
+COMMIT;

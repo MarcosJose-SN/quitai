@@ -99,6 +99,21 @@ func AdicionarItemVenda(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		var possuiPagamentos bool
+		err = tx.QueryRow(`
+    SELECT EXISTS (
+        SELECT 1 FROM pagamentos WHERE venda_id = $1
+    )
+`, item.VendaID).Scan(&possuiPagamentos)
+		if err != nil {
+			http.Error(w, "Erro ao verificar historico de pagamentos", http.StatusInternalServerError)
+			return
+		}
+		if possuiPagamentos {
+			http.Error(w, "Nao e possivel alterar uma venda com pagamentos registrados", http.StatusBadRequest)
+			return
+		}
+
 		if valorEmCentavos(valorPago) > 0 {
 			http.Error(
 				w,

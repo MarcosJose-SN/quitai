@@ -72,3 +72,71 @@ func TestAdicionarItemVendaNaoPermiteVendaDeOutroUsuario(t *testing.T) {
         t.Fatalf("expectativas SQL nao atendidas: %v", err)
     }
 }
+
+func TestAdicionarItemVendaBloqueiaHistoricoPagamentos(t *testing.T) {
+    segredoAnterior, existia := os.LookupEnv("QUITAIA_JWT_SECRET")
+    os.Setenv("QUITAIA_JWT_SECRET", "quitai-chave-teste-isolamento-2026-segura")
+    defer func() {
+        if existia {
+            os.Setenv("QUITAIA_JWT_SECRET", segredoAnterior)
+        } else {
+            os.Unsetenv("QUITAIA_JWT_SECRET")
+        }
+    }()
+
+    db, mock, err := sqlmock.New()
+    if err != nil {
+        t.Fatal(err)
+    }
+    defer db.Close()
+
+    mock.ExpectBegin()
+    mock.ExpectQuery("FROM vendas").
+        WithArgs(9, 2).
+        WillReturnRows(sqlmock.NewRows([]string{
+            "valor_pago", "total_parcelas", "data_compra", "vencimento",
+        }).AddRow(0.0, 2, time.Now(), time.Now()))
+
+    mock.ExpectQuery("SELECT EXISTS").
+        WithArgs(9).
+        WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+
+    mock.ExpectRollback()
+
+    agora := time.Now()
+    claims := auth.Claims{
+        UsuarioID: 2,
+        Email: "teste@quitai.com",
+        RegisteredClaims: jwt.RegisteredClaims{
+            Subject: "2",
+            ExpiresAt: jwt.NewNumericDate(agora.Add(time.Hour)),
+            IssuedAt: jwt.NewNumericDate(agora),
+            NotBefore: jwt.NewNumericDate(agora),
+        },
+    }
+
+    token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).
+        SignedString([]byte("quitai-chave-teste-isolamento-2026-segura"))
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    req := httptest.NewRequest(
+        http.MethodPost,
+        "/venda-itens",
+        strings.NewReader(`{"venda_id":9,"produto_id":5,"quantidade":1}`),
+    )
+    req.Header.Set("Authorization", "Bearer "+token)
+    req.Header.Set("Content-Type", "application/json")
+
+    rec := httptest.NewRecorder()
+    auth.AuthMiddleware(AdicionarItemVenda(db)).ServeHTTP(rec, req)
+
+    if rec.Code != http.StatusBadRequest {
+        t.Fatalf("esperava HTTP 400, recebeu %d (%s)", rec.Code, rec.Body.String())
+    }
+
+    if err := mock.ExpectationsWereMet(); err != nil {
+        t.Fatal(err)
+    }
+}
