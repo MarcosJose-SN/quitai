@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 	"net/http"
 )
 
@@ -26,6 +27,7 @@ func AdminDashboard(db *sql.DB) http.HandlerFunc {
             WHERE perfil = 'revendedora'
         `).Scan(&total, &ativas, &bloqueadas, &novas30Dias)
 		if err != nil {
+			log.Printf("ERRO ADMIN DASHBOARD: %v", err)
 			responderAdminJSON(w, http.StatusInternalServerError, map[string]string{"mensagem": "Não foi possível consultar os indicadores."})
 			return
 		}
