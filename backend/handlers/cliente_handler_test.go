@@ -1,4 +1,3 @@
-
 package handlers
 
 import (
@@ -17,7 +16,7 @@ import (
 
 func TestEditarClienteNaoPermiteEditarClienteDeOutroUsuario(t *testing.T) {
 	// Usa uma chave de teste para o JWT.
-	os.Setenv("QUITAIA_JWT_SECRET", "chave-teste-isolamento")
+	os.Setenv("QUITAIA_JWT_SECRET", "quitai-chave-teste-isolamento-2026-segura")
 	defer os.Unsetenv("QUITAIA_JWT_SECRET")
 
 	db, mock, err := sqlmock.New()
@@ -44,7 +43,7 @@ func TestEditarClienteNaoPermiteEditarClienteDeOutroUsuario(t *testing.T) {
 	}
 
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).
-		SignedString([]byte("chave-teste-isolamento"))
+		SignedString([]byte("quitai-chave-teste-isolamento-2026-segura"))
 	if err != nil {
 		t.Fatalf("erro ao gerar token: %v", err)
 	}

@@ -287,6 +287,7 @@ func LoginGoogle(db *sql.DB) http.HandlerFunc {
 			responderErro(w, http.StatusBadRequest, "Dados inválidos.")
 			return
 		}
+
 		credential := strings.TrimSpace(req.Credential)
 		if credential == "" {
 			responderErro(w, http.StatusBadRequest, "Credencial do Google não informada.")
@@ -301,36 +302,29 @@ func LoginGoogle(db *sql.DB) http.HandlerFunc {
 
 		email := normalizarEmail(info.Email)
 		var usuario UsuarioResponse
-		err = db.QueryRow(
-			`SELECT id, nome, email FROM usuarios WHERE LOWER(email) = LOWER($1)`,
-			email,
-		).Scan(&usuario.ID, &usuario.Nome, &usuario.Email)
+
+		err = db.QueryRow(`
+SELECT id, nome, email, perfil, ativo
+FROM usuarios
+WHERE LOWER(email) = LOWER($1)
+`, email).Scan(
+			&usuario.ID,
+			&usuario.Nome,
+			&usuario.Email,
+			&usuario.Perfil,
+			&usuario.Ativo,
+		)
 
 		if err == sql.ErrNoRows {
-			nome := strings.TrimSpace(info.Name)
-			if nome == "" {
-				nome = email
-			}
-			// Usuários Google recebem uma senha aleatória desconhecida por eles.
-			senhaAleatoria, genErr := gerarSegredoAleatorio()
-			if genErr != nil {
-				responderErro(w, http.StatusInternalServerError, "Não foi possível criar a conta.")
-				return
-			}
-			hashSenha, hashErr := bcrypt.GenerateFromPassword([]byte(senhaAleatoria), bcrypt.DefaultCost)
-			if hashErr != nil {
-				responderErro(w, http.StatusInternalServerError, "Não foi possível proteger a conta.")
-				return
-			}
-			err = db.QueryRow(`
-				INSERT INTO usuarios (nome, email, senha_hash)
-				VALUES ($1, $2, $3)
-				RETURNING id, nome, email
-			`, nome, email, string(hashSenha)).Scan(&usuario.ID, &usuario.Nome, &usuario.Email)
+			responderErro(w, http.StatusForbidden, "Conta não cadastrada. Solicite acesso ao administrador.")
+			return
 		}
-
 		if err != nil {
 			responderErro(w, http.StatusInternalServerError, "Não foi possível acessar sua conta.")
+			return
+		}
+		if !usuario.Ativo {
+			responderErro(w, http.StatusForbidden, "Esta conta está bloqueada.")
 			return
 		}
 
@@ -346,7 +340,6 @@ func LoginGoogle(db *sql.DB) http.HandlerFunc {
 		})
 	}
 }
-
 func validarCredencialGoogle(ctx context.Context, credential string) (googleTokenInfo, error) {
 	client := &http.Client{Timeout: 8 * time.Second}
 	endpoint := "https://oauth2.googleapis.com/tokeninfo?id_token=" + url.QueryEscape(credential)

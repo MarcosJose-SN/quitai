@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,6 +36,17 @@ func CriarProduto(db *sql.DB) http.HandlerFunc {
 		var produto models.Produto
 		if err := json.NewDecoder(r.Body).Decode(&produto); err != nil {
 			http.Error(w, "Dados inválidos", http.StatusBadRequest)
+			return
+		}
+
+		if strings.TrimSpace(produto.Nome) == "" || strings.TrimSpace(produto.Codigo) == "" {
+			http.Error(w, "Informe o nome e o código do produto", http.StatusBadRequest)
+			return
+		}
+		if math.IsNaN(produto.PrecoCusto) || math.IsInf(produto.PrecoCusto, 0) ||
+			math.IsNaN(produto.PrecoVenda) || math.IsInf(produto.PrecoVenda, 0) ||
+			produto.PrecoCusto < 0 || produto.PrecoVenda < 0 || produto.Estoque < 0 {
+			http.Error(w, "Preços e estoque devem ser valores válidos e não negativos", http.StatusBadRequest)
 			return
 		}
 
@@ -142,6 +154,17 @@ func EditarProduto(db *sql.DB) http.HandlerFunc {
 		var produto models.Produto
 		if err := json.NewDecoder(r.Body).Decode(&produto); err != nil {
 			http.Error(w, "Dados inválidos", http.StatusBadRequest)
+			return
+		}
+
+		if strings.TrimSpace(produto.Nome) == "" || strings.TrimSpace(produto.Codigo) == "" {
+			http.Error(w, "Informe o nome e o código do produto", http.StatusBadRequest)
+			return
+		}
+		if math.IsNaN(produto.PrecoCusto) || math.IsInf(produto.PrecoCusto, 0) ||
+			math.IsNaN(produto.PrecoVenda) || math.IsInf(produto.PrecoVenda, 0) ||
+			produto.PrecoCusto < 0 || produto.PrecoVenda < 0 || produto.Estoque < 0 {
+			http.Error(w, "Preços e estoque devem ser valores válidos e não negativos", http.StatusBadRequest)
 			return
 		}
 

@@ -5,10 +5,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: quitai
-      POSTGRES_PASSWORD: [REMOVIDO_DO_HISTORICO]
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no arquivo .env}
       POSTGRES_DB: quitai
     ports:
-      - "5434:5432"
+      - "127.0.0.1:5434:5432"
     volumes:
       - quitai_postgres_data:/var/lib/postgresql/data
 

@@ -15,7 +15,7 @@ import (
 )
 
 func TestEditarProdutoNaoPermiteEditarProdutoDeOutroUsuario(t *testing.T) {
-	const chaveTeste = "chave-teste-isolamento"
+	const chaveTeste = "quitai-chave-teste-isolamento-2026-segura"
 
 	// Preserva a variável de ambiente anterior.
 	valorAnterior, existia := os.LookupEnv("QUITAIA_JWT_SECRET")

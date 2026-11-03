@@ -30,6 +30,11 @@ func CriarCliente(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		if strings.TrimSpace(cliente.Nome) == "" {
+			http.Error(w, "Informe o nome do cliente", http.StatusBadRequest)
+			return
+		}
+
 		err := db.QueryRow(`
 			INSERT INTO clientes (usuario_id, nome, telefone, observacoes)
 			VALUES ($1, $2, $3, $4)
@@ -125,6 +130,11 @@ func EditarCliente(db *sql.DB) http.HandlerFunc {
 		var cliente models.Cliente
 		if err := json.NewDecoder(r.Body).Decode(&cliente); err != nil {
 			http.Error(w, "Dados inválidos", http.StatusBadRequest)
+			return
+		}
+
+		if strings.TrimSpace(cliente.Nome) == "" {
+			http.Error(w, "Informe o nome do cliente", http.StatusBadRequest)
 			return
 		}
 

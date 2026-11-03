@@ -363,3 +363,120 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+/* Ajuda de acesso no lugar do login Google */
+.login-botao-ajuda { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; min-height:54px; padding:12px 16px; border:1px solid #e6c7d3; border-radius:14px; background:#fff; color:#b83d70; font:inherit; font-size:14px; font-weight:750; cursor:pointer; transition:background .2s, border-color .2s, transform .2s; }
+.login-botao-ajuda:hover { background:#fff3f7; border-color:#d94f83; transform:translateY(-1px); }
+.login-botao-ajuda:focus-visible, .login-ajuda-opcoes button:focus-visible { outline:3px solid #e9a0bd; outline-offset:2px; }
+.login-ajuda-opcoes { display:grid; gap:10px; margin-top:20px; }
+.login-ajuda-opcoes button { display:flex; flex-direction:column; gap:5px; width:100%; padding:15px 17px; border:1px solid #edd7e1; border-radius:13px; background:#fffafd; color:#34232e; text-align:left; font:inherit; cursor:pointer; }
+.login-ajuda-opcoes button:hover { border-color:#d94f83; background:#fff1f6; }
+.login-ajuda-opcoes small { color:#806b76; font-size:12px; line-height:1.5; }
+.login-ajuda-contato { margin-top:18px; }
+.login-ajuda-contato p { color:#75636d; font-size:14px; line-height:1.6; }
+.login-ajuda-email { text-decoration:none; text-align:center; }
+.login-ajuda-contato .login-ajuda-nota { font-size:12px; }
+
+/* =====================================================
+   QuitaAí — refinamento visual premium / 2026
+   Mantém as classes e fluxos de autenticação existentes.
+   ===================================================== */
+:root { --quitai-rosa: #d74680; --quitai-rosa-escuro: #b92f69; --quitai-borda: #eedce5; }
+.login-pagina {
+  padding: 32px 18px;
+  background:
+    radial-gradient(ellipse 420px 360px at 2% 7%, rgba(249, 175, 202, .29), transparent 72%),
+    radial-gradient(ellipse 430px 390px at 98% 95%, rgba(242, 158, 192, .24), transparent 75%),
+    linear-gradient(155deg, #fff9fc 0%, #fff5f9 53%, #fdf0f6 100%);
+}
+.login-decoracao-1 { width: 320px; height: 320px; top: -190px; left: -160px; background: rgba(229, 94, 147, .065); }
+.login-decoracao-2 { width: 350px; height: 350px; bottom: -210px; right: -170px; background: rgba(229, 94, 147, .055); }
+.login-card {
+  width: min(100%, 478px);
+  padding: 38px 43px 26px;
+  border: 1px solid rgba(236, 211, 223, .82);
+  border-radius: 30px;
+  background: rgba(255, 255, 255, .985);
+  box-shadow: 0 28px 85px rgba(108, 36, 69, .085), 0 3px 14px rgba(108, 36, 69, .025);
+}
+.login-marca { gap: 14px; }
+.login-logo-svg { width: 57px; height: 57px; max-width: 57px; flex-basis: 57px; }
+.login-marca-texto h1 { font-size: 29px; letter-spacing: -1.1px; color: #281723; }
+.login-marca-texto p { margin-top: 5px; color: #947986; font-size: 11.5px; }
+.login-introducao { margin-top: 31px; }
+.login-introducao h2 { font-size: clamp(25px, 5vw, 30px); letter-spacing: -1.05px; color: #281622; }
+.login-introducao p { margin-top: 9px; font-size: 14px; color: #947d89; }
+.login-formulario { margin-top: 29px; }
+.login-grupo { margin-bottom: 18px; }
+.login-grupo label { margin-bottom: 9px; font-size: 13px; color: #48313e; font-weight: 700; }
+.login-input-wrapper { height: 54px; border-radius: 13px; border-color: #e9d7e0; background: #fff; }
+.login-input-wrapper:hover { border-color: #d8b9c8; }
+.login-input-wrapper:focus-within { border-color: #d74680; box-shadow: 0 0 0 4px rgba(215, 70, 128, .095); }
+.login-icone { flex-basis: 50px; }
+.login-icone svg { stroke: #aa8899; width: 19px; height: 19px; }
+.login-input-wrapper input { color: #34212d; font-size: 14px; caret-color: #c73571; }
+.login-input-wrapper input::placeholder { color: #b7a3ad; }
+/* Evita o fundo cinza/azulado que o navegador pode aplicar no preenchimento automático. */
+.login-input-wrapper input:-webkit-autofill,
+.login-input-wrapper input:-webkit-autofill:hover,
+.login-input-wrapper input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #34212d;
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  box-shadow: 0 0 0 1000px #fff inset;
+  transition: background-color 9999s ease-out 0s;
+}
+.login-mostrar-senha { color: #aa899a; }
+.login-opcoes { margin: 0 0 22px; gap: 10px; }
+.login-checkbox { color: #8a7480; font-size: 12px; }
+.login-checkbox input:focus-visible + .login-checkbox-caixa { outline: 3px solid #f4bdd2; outline-offset: 3px; }
+.login-link { color: #c33672; font-size: 12px; }
+.login-botao-entrar {
+  min-height: 54px;
+  border-radius: 13px;
+  background: linear-gradient(110deg, #e1588d 0%, #ce3e79 100%);
+  box-shadow: 0 10px 23px rgba(206, 62, 121, .19);
+  font-size: 15px;
+  letter-spacing: .1px;
+}
+.login-botao-entrar:hover:not(:disabled) { box-shadow: 0 13px 28px rgba(206, 62, 121, .25); }
+.login-divisor { margin: 27px 0 20px; gap: 12px; }
+.login-divisor span { background: #f0e3e9; }
+.login-divisor strong { font-size: 10px; letter-spacing: 1.1px; font-weight: 750; color: #aa8b9a; white-space: nowrap; }
+.login-botao-ajuda {
+  min-height: 53px;
+  border: 1px solid #edcad9;
+  border-radius: 13px;
+  background: #fffafd;
+  color: #bb3970;
+  font-size: 13px;
+  box-shadow: 0 2px 5px rgba(114, 41, 71, .02);
+}
+.login-botao-ajuda:hover { background: #fff0f6; border-color: #d74680; box-shadow: 0 6px 15px rgba(215, 70, 128, .07); }
+.login-botao-ajuda svg { flex-shrink: 0; }
+.login-rodape { margin-top: 24px; padding-top: 15px; border-top-color: #f1e6eb; gap: 6px 9px; color: #aa95a0; font-size: 10px; }
+.login-rodape a { color: #947d89; }
+.login-rodape-versao { flex-basis: 100%; font-size: 9px; }
+.login-modal-fundo { background: rgba(40, 21, 33, .57); backdrop-filter: blur(5px); }
+.login-modal { border-radius: 24px; box-shadow: 0 28px 90px rgba(40, 18, 31, .2); }
+.login-modal h2 { font-size: 23px; }
+.login-ajuda-opcoes button { transition: background .15s, border-color .15s, transform .15s; }
+.login-ajuda-opcoes button:hover { transform: translateY(-1px); }
+.login-ajuda-email { display: flex; }
+.login-botao-entrar:focus-visible, .login-link:focus-visible, .login-mostrar-senha:focus-visible, .login-modal-fechar:focus-visible { outline: 3px solid #f2a9c5; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .login-pagina { align-items: center; padding: 20px 13px; }
+  .login-card { padding: 30px 24px 23px; border-radius: 25px; }
+  .login-logo-svg { flex-basis: 49px; width: 49px; height: 49px; max-width: 49px; }
+  .login-marca-texto h1 { font-size: 26px; }
+  .login-marca-texto p { font-size: 10px; }
+  .login-introducao { margin-top: 27px; }
+  .login-formulario { margin-top: 26px; }
+  .login-divisor { margin: 24px 0 18px; }
+  .login-rodape { margin-top: 20px; }
+}
+@media (max-width: 380px) {
+  .login-card { padding: 25px 18px 20px; }
+  .login-marca { gap: 9px; }
+  .login-marca-texto p { font-size: 9px; }
+  .login-opcoes { gap: 7px; }
+  .login-checkbox, .login-link { font-size: 11px; }
+}

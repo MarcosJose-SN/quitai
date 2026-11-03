@@ -26,3 +26,23 @@ Thumbs.db
 # Backups locais do banco de dados — não enviar ao GitHub
 /backup_quitai_antes_isolamento.dump
 /backup_quitai_antes_isolamento.sql
+# Arquivos temporarios e backups de seguranca
+*.backup-pre-seguranca
+*.backup-pre-env
+*.backup-passo214
+*.go.novo
+*.yml.novo
+# Backups locais e arquivos privados
+*.bak
+*.bak_*
+*.backup-*
+*.backup_*
+/backup_*/
+/backend/uploads/
+/frontend/backup_*/
+
+# Backup local do frontend antes da preparacao para producao
+/frontend/src_backup_pre_producao/
+
+# Backup do banco principal antes da migracao de novembro de 2026
+/backend/quitai_pre_migracao_20261102.sql

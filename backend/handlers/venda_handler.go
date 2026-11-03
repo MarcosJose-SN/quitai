@@ -254,7 +254,7 @@ func CriarVenda(db *sql.DB) http.HandlerFunc {
 		).Scan(&venda.ID)
 
 		if err != nil {
-			http.Error(w, "Erro ao criar venda: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Não foi possível criar a venda.", http.StatusInternalServerError)
 			return
 		}
 
@@ -304,7 +304,7 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 			ORDER BY v.id DESC
 		`, usuarioID)
 		if err != nil {
-			http.Error(w, "Erro ao listar vendas: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Erro ao listar vendas", http.StatusInternalServerError)
 			return
 		}
 		defer rows.Close()
@@ -325,7 +325,7 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 				&venda.Saldo,
 				&venda.TotalParcelas,
 			); err != nil {
-				http.Error(w, "Erro ao ler vendas: "+err.Error(), http.StatusInternalServerError)
+				http.Error(w, "Erro ao ler vendas", http.StatusInternalServerError)
 				return
 			}
 
@@ -339,7 +339,7 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := rows.Err(); err != nil {
-			http.Error(w, "Erro ao percorrer vendas: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Erro ao percorrer vendas", http.StatusInternalServerError)
 			return
 		}
 
@@ -410,7 +410,7 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err != nil {
-			http.Error(w, "Erro ao buscar venda: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Erro ao buscar venda", http.StatusInternalServerError)
 			return
 		}
 
@@ -438,7 +438,7 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			ORDER BY vi.id ASC
 		`, vendaID, usuarioID)
 		if err != nil {
-			http.Error(w, "Erro ao buscar itens da venda: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Erro ao buscar itens da venda", http.StatusInternalServerError)
 			return
 		}
 		defer rows.Close()
@@ -465,13 +465,13 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 				&item.PrecoUnitario,
 				&item.Subtotal,
 			); err != nil {
-				http.Error(w, "Erro ao ler itens da venda: "+err.Error(), http.StatusInternalServerError)
+				http.Error(w, "Erro ao ler itens da venda", http.StatusInternalServerError)
 				return
 			}
 			itens = append(itens, item)
 		}
 		if err := rows.Err(); err != nil {
-			http.Error(w, "Erro ao percorrer itens da venda: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Erro ao percorrer itens da venda", http.StatusInternalServerError)
 			return
 		}
 
@@ -491,7 +491,7 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			ORDER BY numero_parcela ASC
 		`, vendaID)
 		if err != nil {
-			http.Error(w, "Erro ao buscar parcelas da venda: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Erro ao buscar parcelas da venda", http.StatusInternalServerError)
 			return
 		}
 		defer parcelasRows.Close()
@@ -520,13 +520,13 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 				&parcela.ValorPago,
 				&parcela.Status,
 			); err != nil {
-				http.Error(w, "Erro ao ler parcelas da venda: "+err.Error(), http.StatusInternalServerError)
+				http.Error(w, "Erro ao ler parcelas da venda", http.StatusInternalServerError)
 				return
 			}
 			parcelas = append(parcelas, parcela)
 		}
 		if err := parcelasRows.Err(); err != nil {
-			http.Error(w, "Erro ao percorrer parcelas da venda: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Erro ao percorrer parcelas da venda", http.StatusInternalServerError)
 			return
 		}
 

@@ -1,6 +1,10 @@
+import { conectarEventosSuporte } from './services/suporteEventos'
 import { useEffect, useState } from 'react'
 import './App.css'
 import Login from './Login'
+import PoliticaPrivacidade from './pages/legal/PoliticaPrivacidade'
+import TermosUso from './pages/legal/TermosUso'
+import DireitosLGPD from './pages/legal/DireitosLGPD'
 
 // Centraliza o envio do token JWT nas requisições à API.
 // Preserva os demais cabeçalhos, como Content-Type, definidos em cada chamada.
@@ -21,7 +25,24 @@ async function fetchAutenticado(url, options = {}) {
   })
 }
 
+function IconeNavegacao({ nome }) {
+  const desenhos = {
+    inicio: '<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
+    vendas: '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 2h2l2.4 12.4a2 2 0 0 0 2 1.6h11a2 2 0 0 0 2-1.6L22 6H4"/>',
+    clientes: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+    produtos: '<path d="m12 2 9 5-9 5-9-5 9-5zM3 7v10l9 5 9-5V7M12 12v10"/>',
+    mais: '<circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>',
+  }
+  return <svg aria-hidden="true" viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="currentColor" strokeWidth="1.85" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: desenhos[nome] || '' }} />
+}
+
 function App() {
+  const [rotaPublica, setRotaPublica] = useState(() => window.location.pathname)
+  useEffect(() => {
+    const atualizarRota = () => setRotaPublica(window.location.pathname)
+    window.addEventListener('popstate', atualizarRota)
+    return () => window.removeEventListener('popstate', atualizarRota)
+  }, [])
   const [autenticado, setAutenticado] = useState(() => {
     return Boolean(
       localStorage.getItem('quitai_token') ||
@@ -34,12 +55,220 @@ function App() {
       sessionStorage.getItem('quitai_token')
     )
   })
+  const [sistema, setSistema] = useState({ manutencao: false, mensagem_manutencao: '', avisos: [] })
+  useEffect(() => {
+    let ativo = true
+    const atualizar = async () => {
+      try {
+        const resposta = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/sistema/publico`, { cache: 'no-store' })
+        if (!resposta.ok) return
+        const dados = await resposta.json()
+        if (ativo) setSistema(dados)
+      } catch (_) { /* conserva o último estado conhecido */ }
+    }
+    atualizar()
+    // SSE: recebe o sinal de atualização assim que o gestor salva uma alteração.
+    // O polling é mantido como contingência para perda de conexão.
+    const eventos = new EventSource(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/sistema/eventos`)
+    eventos.addEventListener('atualizar', atualizar)
+    const aoRetornar = () => { if (!document.hidden) atualizar() }
+    window.addEventListener('focus', aoRetornar)
+    document.addEventListener('visibilitychange', aoRetornar)
+    const intervalo = setInterval(atualizar, 12000)
+    return () => {
+      ativo = false
+      eventos.removeEventListener('atualizar', atualizar)
+      eventos.close()
+      clearInterval(intervalo)
+      window.removeEventListener('focus', aoRetornar)
+      document.removeEventListener('visibilitychange', aoRetornar)
+    }
+  }, [])
   const [tela, setTela] = useState('inicio')
   const [notificacoesAbertas, setNotificacoesAbertas] = useState(false)
   const [notificacoesLidas, setNotificacoesLidas] = useState(() => {
     try { return JSON.parse(localStorage.getItem('quitai_notificacoes_lidas') || '[]') } catch { return [] }
   })
   const [subTelaMais, setSubTelaMais] = useState('menu')
+  const [buscaSuporte, setBuscaSuporte] = useState('')
+  const [faqAberta, setFaqAberta] = useState(-1)
+  const [assuntoSuporte, setAssuntoSuporte] = useState('')
+  const [categoriaSuporte, setCategoriaSuporte] = useState('Dúvidas gerais')
+  const [descricaoSuporte, setDescricaoSuporte] = useState('')
+  const [mensagemSuporte, setMensagemSuporte] = useState('')
+  const [rascunhosSuporte, setRascunhosSuporte] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('quitai_suporte_rascunhos') || '[]') } catch { return [] }
+  })
+  const [enviandoSuporte, setEnviandoSuporte] = useState(false)
+  const [chamadosSuporte, setChamadosSuporte] = useState([])
+  const [carregandoChamadosSuporte, setCarregandoChamadosSuporte] = useState(false)
+  const [chamadoSelecionadoSuporte, setChamadoSelecionadoSuporte] = useState(null)
+  const [respostaSuporte, setRespostaSuporte] = useState('')
+  const [respondendoSuporte, setRespondendoSuporte] = useState(false)
+
+  async function requisicaoSuporte(caminho, opcoes = {}) {
+    const resposta = await fetchAutenticado(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}${caminho}`, {
+      ...opcoes,
+      headers: { 'Content-Type': 'application/json', ...(opcoes.headers || {}) },
+    })
+    const dados = await resposta.json().catch(() => ({}))
+    if (!resposta.ok) throw new Error(dados.mensagem || `Erro HTTP ${resposta.status}`)
+    return dados
+  }
+
+  async function carregarChamadosSuporte() {
+    setCarregandoChamadosSuporte(true)
+    try {
+      const dados = await requisicaoSuporte('/suporte')
+      setChamadosSuporte(Array.isArray(dados) ? dados : [])
+    } catch (erro) {
+      setMensagemSuporte(`Não foi possível consultar os chamados: ${erro.message}`)
+    } finally {
+      setCarregandoChamadosSuporte(false)
+    }
+  }
+
+  async function abrirChamadoSuporte(id) {
+    try {
+      const dados = await requisicaoSuporte(`/suporte/${id}`)
+      setChamadoSelecionadoSuporte(dados)
+      setRespostaSuporte('')
+    } catch (erro) {
+      setMensagemSuporte(`Não foi possível abrir o chamado: ${erro.message}`)
+    }
+  }
+
+  async function enviarSolicitacaoSuporte(evento) {
+    evento.preventDefault()
+    if (enviandoSuporte) return
+    if (assuntoSuporte.trim().length < 3 || descricaoSuporte.trim().length < 15) {
+      setMensagemSuporte('Informe um assunto de pelo menos 3 caracteres e uma descrição de pelo menos 15.')
+      return
+    }
+    setEnviandoSuporte(true)
+    setMensagemSuporte('')
+    try {
+      const dados = await requisicaoSuporte('/suporte', {
+        method: 'POST',
+        body: JSON.stringify({ assunto: assuntoSuporte.trim(), categoria: categoriaSuporte, mensagem: descricaoSuporte.trim() }),
+      })
+      setAssuntoSuporte('')
+      setDescricaoSuporte('')
+      setMensagemSuporte(`Solicitação #${dados.id} enviada com sucesso à equipe de suporte.`)
+      await carregarChamadosSuporte()
+    } catch (erro) {
+      setMensagemSuporte(`Não foi possível enviar: ${erro.message}. Seu texto permanece no formulário.`)
+    } finally {
+      setEnviandoSuporte(false)
+    }
+  }
+
+  async function enviarRascunhoSuporte(item) {
+    if (enviandoSuporte) return
+    setEnviandoSuporte(true)
+    setMensagemSuporte('')
+    try {
+      const dados = await requisicaoSuporte('/suporte', {
+        method: 'POST',
+        body: JSON.stringify({ assunto: item.assunto, categoria: item.categoria, mensagem: item.descricao }),
+      })
+      const atualizados = rascunhosSuporte.filter((rascunho) => rascunho.id !== item.id)
+      setRascunhosSuporte(atualizados)
+      localStorage.setItem('quitai_suporte_rascunhos', JSON.stringify(atualizados))
+      setMensagemSuporte(`Rascunho enviado como chamado #${dados.id}.`)
+      await carregarChamadosSuporte()
+    } catch (erro) {
+      setMensagemSuporte(`Erro ao enviar rascunho: ${erro.message}. O rascunho foi preservado.`)
+    } finally {
+      setEnviandoSuporte(false)
+    }
+  }
+
+  async function responderChamadoSuporte(evento) {
+    evento.preventDefault()
+    if (!chamadoSelecionadoSuporte || chamadoSelecionadoSuporte.status === 'resolvido' || !respostaSuporte.trim() || respondendoSuporte) return
+    setRespondendoSuporte(true)
+    try {
+      await requisicaoSuporte(`/suporte/${chamadoSelecionadoSuporte.id}/respostas`, {
+        method: 'POST', body: JSON.stringify({ mensagem: respostaSuporte.trim() }),
+      })
+      setRespostaSuporte('')
+      await abrirChamadoSuporte(chamadoSelecionadoSuporte.id)
+      await carregarChamadosSuporte()
+      setMensagemSuporte('Resposta enviada com sucesso.')
+    } catch (erro) {
+      setMensagemSuporte(`Não foi possível enviar a resposta: ${erro.message}`)
+    } finally {
+      setRespondendoSuporte(false)
+    }
+  }
+
+  useEffect(() => {
+    if (autenticado && subTelaMais === 'suporte') carregarChamadosSuporte()
+  }, [autenticado, subTelaMais])
+
+  // Atualização imediata por SSE; fallback periódico em caso de falha de rede.
+  useEffect(() => {
+    if (!autenticado || subTelaMais !== 'suporte') return
+    let ativo = true
+    let ocupado = false
+    const sincronizar = async () => {
+      if (!ativo || ocupado || document.hidden) return
+      ocupado = true
+      try {
+        const lista = await requisicaoSuporte('/suporte')
+        if (ativo && Array.isArray(lista)) setChamadosSuporte(lista)
+        if (chamadoSelecionadoSuporte?.id) {
+          const detalhes = await requisicaoSuporte(`/suporte/${chamadoSelecionadoSuporte.id}`)
+          if (ativo) setChamadoSelecionadoSuporte(detalhes)
+        }
+      } catch (_) { /* mantém os dados atuais */ }
+      finally { ocupado = false }
+    }
+    const desconectar = conectarEventosSuporte('/suporte/eventos', sincronizar)
+    const intervalo = window.setInterval(sincronizar, 15000)
+    const aoRetornar = () => { if (!document.hidden) sincronizar() }
+    document.addEventListener('visibilitychange', aoRetornar)
+    window.addEventListener('focus', aoRetornar)
+    return () => { ativo = false; desconectar(); clearInterval(intervalo); document.removeEventListener('visibilitychange', aoRetornar); window.removeEventListener('focus', aoRetornar) }
+  }, [autenticado, subTelaMais, chamadoSelecionadoSuporte?.id])
+
+  const perguntasSuporte = [
+    { pergunta: 'Como cadastrar uma nova venda?', resposta: 'Abra Vendas, selecione Nova venda, escolha o cliente e os produtos, confira as parcelas e finalize o cadastro.' },
+    { pergunta: 'Como registrar um pagamento?', resposta: 'Acesse Vendas, abra os detalhes da venda e selecione a parcela correspondente para registrar o valor recebido.' },
+    { pergunta: 'Como cadastrar clientes e produtos?', resposta: 'Use as abas Clientes e Produtos no menu inferior. Em cada uma, escolha a opção de novo cadastro e preencha os campos.' },
+    { pergunta: 'Como alterar meus dados ou minha senha?', resposta: 'Acesse Mais → Minha conta. Você poderá editar nome e e-mail ou usar a opção Alterar senha.' },
+    { pergunta: 'Por que não consigo excluir um cadastro?', resposta: 'Um cliente ou produto vinculado a vendas pode ter a exclusão bloqueada para preservar o histórico financeiro.' },
+    { pergunta: 'Meus dados ficam salvos se eu sair?', resposta: 'Os dados cadastrados no sistema são armazenados no servidor. Para evitar perda de alterações, aguarde a confirmação de salvamento antes de sair.' },
+  ]
+  function salvarRascunhoSuporte(evento) {
+    evento.preventDefault()
+    if (!assuntoSuporte.trim() || descricaoSuporte.trim().length < 15) {
+      setMensagemSuporte('Informe o assunto e descreva o problema com pelo menos 15 caracteres.')
+      return
+    }
+    const novo = { id: Date.now(), assunto: assuntoSuporte.trim(), categoria: categoriaSuporte, descricao: descricaoSuporte.trim(), criadoEm: new Date().toISOString() }
+    const atualizados = [novo, ...rascunhosSuporte]
+    setRascunhosSuporte(atualizados)
+    localStorage.setItem('quitai_suporte_rascunhos', JSON.stringify(atualizados))
+    setAssuntoSuporte('')
+    setDescricaoSuporte('')
+    setMensagemSuporte('Rascunho salvo neste dispositivo. Você pode enviá-lo quando quiser.')
+  }
+  const [dadosConta, setDadosConta] = useState(null)
+  const [carregandoConta, setCarregandoConta] = useState(false)
+  const [erroConta, setErroConta] = useState('')
+  const [editandoConta, setEditandoConta] = useState(false)
+  const [nomeConta, setNomeConta] = useState('')
+  const [emailConta, setEmailConta] = useState('')
+  const [salvandoConta, setSalvandoConta] = useState(false)
+  const [alterandoSenha, setAlterandoSenha] = useState(false)
+  const [senhaAtual, setSenhaAtual] = useState('')
+  const [novaSenha, setNovaSenha] = useState('')
+  const [confirmarSenha, setConfirmarSenha] = useState('')
+  const [salvandoSenha, setSalvandoSenha] = useState(false)
+  const [mensagemConta, setMensagemConta] = useState('')
+
   const [confirmarSaida, setConfirmarSaida] = useState(() => {
     return localStorage.getItem('quitai_confirmar_saida') !== 'false'
   })
@@ -71,6 +300,93 @@ function App() {
       return {}
     }
   })()
+
+  async function atualizarDadosConta() {
+    setCarregandoConta(true)
+    setErroConta('')
+    try {
+      const resposta = await fetchAutenticado(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/auth/me`)
+      if (!resposta.ok) throw new Error(resposta.status === 401 ? 'Sua sessão expirou. Entre novamente.' : 'Não foi possível consultar seus dados agora.')
+      const usuario = await resposta.json()
+      if (usuario.perfil !== 'revendedora' || usuario.ativo !== true) throw new Error('Esta conta não está habilitada como revendedora.')
+      setDadosConta(usuario)
+      setNomeConta(usuario.nome || '')
+      setEmailConta(usuario.email || '')
+    } catch (erro) {
+      setErroConta(erro.message || 'Erro ao consultar a conta.')
+    } finally {
+      setCarregandoConta(false)
+    }
+  }
+
+  async function salvarDadosConta(evento) {
+    evento.preventDefault()
+    setErroConta('')
+    setMensagemConta('')
+    if (nomeConta.trim().length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailConta.trim())) {
+      setErroConta('Informe um nome e um e-mail válidos.')
+      return
+    }
+    setSalvandoConta(true)
+    try {
+      const resposta = await fetchAutenticado(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/minha-conta`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nome: nomeConta.trim(), email: emailConta.trim() }),
+      })
+      const dados = await resposta.json().catch(() => ({}))
+      if (!resposta.ok) throw new Error(dados.mensagem || 'Não foi possível atualizar o perfil.')
+      setDadosConta(dados)
+      setNomeConta(dados.nome)
+      setEmailConta(dados.email)
+      for (const storage of [localStorage, sessionStorage]) {
+        if (storage.getItem('quitai_usuario')) storage.setItem('quitai_usuario', JSON.stringify(dados))
+      }
+      setEditandoConta(false)
+      setMensagemConta('Dados atualizados com sucesso.')
+    } catch (erro) {
+      setErroConta(erro.message)
+    } finally {
+      setSalvandoConta(false)
+    }
+  }
+
+  async function salvarNovaSenha(evento) {
+    evento.preventDefault()
+    setErroConta('')
+    setMensagemConta('')
+    if (novaSenha.length < 8 || novaSenha !== confirmarSenha) {
+      setErroConta('A senha deve ter pelo menos 8 caracteres e a confirmação deve coincidir.')
+      return
+    }
+    setSalvandoSenha(true)
+    try {
+      const resposta = await fetchAutenticado(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/minha-conta/senha`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          senha_atual: senhaAtual,
+          nova_senha: novaSenha,
+          confirmar_senha: confirmarSenha,
+        }),
+      })
+      const dados = await resposta.json().catch(() => ({}))
+      if (!resposta.ok) throw new Error(dados.mensagem || 'Não foi possível alterar a senha.')
+      setSenhaAtual('')
+      setNovaSenha('')
+      setConfirmarSenha('')
+      setAlterandoSenha(false)
+      setMensagemConta(dados.mensagem || 'Senha alterada com sucesso.')
+    } catch (erro) {
+      setErroConta(erro.message)
+    } finally {
+      setSalvandoSenha(false)
+    }
+  }
+
+  useEffect(() => {
+    if (autenticado && tela === 'mais' && subTelaMais === 'conta') atualizarDadosConta()
+  }, [autenticado, tela, subTelaMais])
 
   // =========================================================
   // PRODUTOS
@@ -211,7 +527,7 @@ function App() {
     async function validarSessao() {
       try {
         const resposta = await fetchAutenticado(
-          'http://localhost:8082/auth/me',
+          `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/auth/me`,
           {
             method: 'GET',
             headers: {
@@ -237,9 +553,27 @@ function App() {
           throw new Error('Não foi possível validar a sessão no momento.')
         }
 
-        if (ativo) {
-          setAutenticado(true)
+        const usuario = await resposta.json()
+
+        if (!ativo) return
+
+        // O painel administrativo é uma aplicação separada.
+        // Nunca exibir os dados da revendedora para uma sessão admin.
+        if (usuario.perfil === 'admin' && usuario.ativo === true) {
+          window.location.replace('/admin')
+          return
         }
+
+        if (usuario.perfil !== 'revendedora' || usuario.ativo !== true) {
+          localStorage.removeItem('quitai_token')
+          localStorage.removeItem('quitai_usuario')
+          sessionStorage.removeItem('quitai_token')
+          sessionStorage.removeItem('quitai_usuario')
+          setAutenticado(false)
+          return
+        }
+
+        setAutenticado(true)
       } catch (error) {
         // Uma falha de conexão não apaga o token salvo.
         console.error('Erro ao validar sessão:', error)
@@ -308,7 +642,7 @@ function App() {
       setErroProdutos('')
 
       const resposta = await fetchAutenticado(
-        'http://localhost:8082/produtos/listar'
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/produtos/listar`
       )
 
       if (!resposta.ok) {
@@ -341,7 +675,7 @@ function App() {
       setErroVendas('')
 
       const resposta = await fetchAutenticado(
-        'http://localhost:8082/vendas/listar'
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/listar`
       )
 
       if (!resposta.ok) {
@@ -362,7 +696,7 @@ function App() {
           vendasRecebidas.map(async (venda) => {
             try {
               const respostaDetalhes = await fetchAutenticado(
-                `http://localhost:8082/vendas/${venda.id}`
+                `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/${venda.id}`
               )
 
               if (!respostaDetalhes.ok) {
@@ -696,7 +1030,7 @@ function App() {
       // -------------------------------------------------------
 
       const respostaVenda = await fetchAutenticado(
-        'http://localhost:8082/vendas',
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas`,
         {
           method: 'POST',
           headers: {
@@ -749,7 +1083,7 @@ function App() {
 
       for (const item of itensNovaVenda) {
         const respostaItem = await fetchAutenticado(
-          'http://localhost:8082/vendas/itens',
+          `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/itens`,
           {
             method: 'POST',
             headers: {
@@ -813,7 +1147,7 @@ function App() {
 
       const respostaDetalhes =
         await fetchAutenticado(
-          `http://localhost:8082/vendas/${vendaId}`
+          `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/${vendaId}`
         )
 
       if (respostaDetalhes.ok) {
@@ -865,7 +1199,7 @@ function App() {
       setVendaSelecionada(null)
 
       const resposta = await fetchAutenticado(
-        `http://localhost:8082/vendas/${venda.id}`
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/${venda.id}`
       )
 
       if (!resposta.ok) {
@@ -888,7 +1222,7 @@ function App() {
       setVendaSelecionada(dados)
 
       const respostaPagamentos = await fetchAutenticado(
-        `http://localhost:8082/pagamentos?venda_id=${venda.id}`
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/pagamentos?venda_id=${venda.id}`
       )
 
       if (respostaPagamentos.ok) {
@@ -935,7 +1269,7 @@ function App() {
     try {
       setExcluindoVenda(true)
       setErroExclusaoVenda('')
-      const resposta = await fetchAutenticado(`http://localhost:8082/vendas/${vendaParaExcluir.id}`, { method: 'DELETE' })
+      const resposta = await fetchAutenticado(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/${vendaParaExcluir.id}`, { method: 'DELETE' })
       if (!resposta.ok) {
         const mensagem = await resposta.text()
         throw new Error(mensagem || 'Não foi possível excluir esta venda.')
@@ -1097,7 +1431,7 @@ function App() {
       setErroPagamento('')
 
       const resposta = await fetchAutenticado(
-        'http://localhost:8082/pagamentos',
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/pagamentos`,
         {
           method: 'POST',
           headers: {
@@ -1147,7 +1481,7 @@ function App() {
 
       const respostaDetalhes =
         await fetchAutenticado(
-          `http://localhost:8082/vendas/${vendaSelecionada.venda.id}`
+          `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/${vendaSelecionada.venda.id}`
         )
 
       if (!respostaDetalhes.ok) {
@@ -1164,7 +1498,7 @@ function App() {
       )
 
       const respostaPagamentos = await fetchAutenticado(
-        `http://localhost:8082/pagamentos?venda_id=${vendaSelecionada.venda.id}`
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/pagamentos?venda_id=${vendaSelecionada.venda.id}`
       )
 
       if (respostaPagamentos.ok) {
@@ -1302,8 +1636,8 @@ function App() {
         produtoEditandoId !== null
 
       const url = editando
-        ? `http://localhost:8082/produtos/${produtoEditandoId}`
-        : 'http://localhost:8082/produtos'
+        ? `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/produtos/${produtoEditandoId}`
+        : `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/produtos`
 
       const metodo = editando
         ? 'PUT'
@@ -1392,7 +1726,7 @@ function App() {
       setErroProdutos('')
 
       const resposta = await fetchAutenticado(
-        `http://localhost:8082/produtos/${produtoParaExcluir.id}`,
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/produtos/${produtoParaExcluir.id}`,
         {
           method: 'DELETE',
         }
@@ -1453,7 +1787,7 @@ function App() {
       setErroClientes('')
 
       const resposta = await fetchAutenticado(
-        'http://localhost:8082/clientes/listar'
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/clientes/listar`
       )
 
       if (!resposta.ok) {
@@ -1572,8 +1906,8 @@ function App() {
         clienteEditandoId !== null
 
       const url = editando
-        ? `http://localhost:8082/clientes/${clienteEditandoId}`
-        : 'http://localhost:8082/clientes'
+        ? `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/clientes/${clienteEditandoId}`
+        : `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/clientes`
 
       const metodo = editando
         ? 'PUT'
@@ -1664,7 +1998,7 @@ function App() {
       setErroClientes('')
 
       const resposta = await fetchAutenticado(
-        `http://localhost:8082/clientes/${clienteExcluindo.id}`,
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/clientes/${clienteExcluindo.id}`,
         {
           method: 'DELETE',
         }
@@ -1870,6 +2204,26 @@ function App() {
       )
     : 0
 
+  // As páginas informativas são acessíveis sem sessão, inclusive enquanto
+  // a autenticação é validada. Publicar somente após aprovação dos textos.
+  const documentosPublicos = {
+    '/politica-de-privacidade': PoliticaPrivacidade,
+    '/termos-de-uso': TermosUso,
+    '/direitos-lgpd': DireitosLGPD,
+  }
+  const DocumentoPublico = documentosPublicos[rotaPublica]
+  if (DocumentoPublico) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#f8fafc', padding: '24px 16px', fontFamily: 'inherit' }}>
+        <div style={{ maxWidth: 980, margin: '0 auto 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <strong style={{ color: '#db2777', fontSize: 20 }}>QuitAÍ</strong>
+          <a href="/" style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'none' }}>← Voltar ao sistema</a>
+        </div>
+        <main style={{ maxWidth: 980, margin: '0 auto' }}><DocumentoPublico onVoltar={() => window.location.assign('/')} /></main>
+      </div>
+    )
+  }
+
   if (validandoSessao) {
     return (
       <div
@@ -1893,13 +2247,49 @@ function App() {
   if (!autenticado) {
     return (
       <Login
-        onLogin={() => setAutenticado(true)}
+        onLogin={(usuario) => {
+          if (usuario?.perfil === 'admin') {
+            window.location.replace('/admin')
+            return
+          }
+          if (usuario?.perfil === 'revendedora' && usuario?.ativo !== false) {
+            setAutenticado(true)
+            return
+          }
+          setAutenticado(false)
+        }}
       />
     )
   }
 
   return (
     <div className={`app tema-${temaEfetivo}`} data-tema={temaAtual}>
+      {sistema.manutencao ? (
+        <div className="qa-maintenance-screen" role="status" aria-live="polite">
+          <style>{`
+            .qa-maintenance-screen{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto;background:radial-gradient(circle at 18% 18%,#fff9fc 0%,transparent 42%),radial-gradient(circle at 85% 85%,#f9d1e5 0%,transparent 40%),linear-gradient(145deg,#fff1f8,#f9dbe9);color:#743354;font-family:inherit}
+            .qa-maintenance-screen *{box-sizing:border-box}.qa-maintenance-card{position:relative;width:min(100%,510px);padding:43px 36px 34px;text-align:center;border:1px solid #fff;background:rgba(255,255,255,.96);border-radius:28px;box-shadow:0 24px 75px rgba(143,53,101,.14);overflow:hidden}.qa-maintenance-card:before{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(90deg,#f5a4cc,#c63b82,#f5a4cc)}
+            .qa-maintenance-symbol{width:88px;height:88px;margin:0 auto 21px;display:grid;place-items:center;border-radius:25px;background:linear-gradient(145deg,#fff0f7,#f8d4e7);font-size:42px;box-shadow:0 10px 26px rgba(191,59,123,.1)}.qa-maintenance-tag{display:inline-flex;align-items:center;gap:8px;padding:7px 13px;background:#fff0f7;border:1px solid #f6d5e5;border-radius:100px;color:#a52b68;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase}.qa-maintenance-tag:before{content:'';width:7px;height:7px;background:#d44e8f;border-radius:50%}
+            .qa-maintenance-card h1{font-size:clamp(25px,4vw,32px);font-weight:850;letter-spacing:-.8px;color:#632446!important;margin:18px 0 10px;line-height:1.2}.qa-maintenance-card .qa-maintenance-lead{font-size:15px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere;color:#78556b!important;margin:0 auto 22px;max-width:410px}.qa-maintenance-divider{height:1px;background:#f3e1eb;margin:22px 0}.qa-maintenance-foot{display:flex;gap:11px;align-items:center;justify-content:center;color:#946c81;font-size:12px;line-height:1.6}.qa-maintenance-pulse{height:10px;width:10px;flex:none;border-radius:50%;background:#d95191;box-shadow:0 0 0 5px #fae2ed;animation:qa-pulse 2s ease-in-out infinite}@keyframes qa-pulse{50%{box-shadow:0 0 0 9px #fae2ed55}}@media(max-width:520px){.qa-maintenance-card{padding:35px 22px 27px;border-radius:23px}.qa-maintenance-symbol{height:74px;width:74px;font-size:35px}}
+          `}</style>
+          <div className="qa-maintenance-card">
+            <div className="qa-maintenance-symbol" aria-hidden="true">🛠️</div>
+            <span className="qa-maintenance-tag">Atualização em andamento</span>
+            <h1>Voltamos em breve!</h1>
+            <p className="qa-maintenance-lead">{sistema.mensagem_manutencao || 'Estamos realizando melhorias. Volte em instantes.'}</p>
+            <div className="qa-maintenance-divider" />
+            <div className="qa-maintenance-foot"><span className="qa-maintenance-pulse" aria-hidden="true"/><span>Estamos cuidando de tudo. Seu acesso será liberado automaticamente.</span></div>
+          </div>
+        </div>
+      ) : null}
+      {!sistema.manutencao && autenticado && (sistema.avisos || []).length > 0 && (
+        <aside aria-label="Avisos e atualizações" style={{ margin: '12px auto', maxWidth: 1100, padding: '0 14px', display: 'grid', gap: 9 }}>
+          {(sistema.avisos || []).slice(0, 5).map(aviso => <div key={aviso.id} style={{ border: '1px solid #f2c6d8', background: '#fff8fb', color: '#76334f', borderRadius: 13, padding: '12px 17px' }}>
+            <strong>{aviso.tipo === 'alerta' ? '⚠️' : aviso.tipo === 'novidade' ? '✨' : '📢'} {aviso.titulo}</strong>
+            <p style={{ margin: '5px 0 0', whiteSpace: 'pre-wrap', fontSize: 13 }}>{aviso.mensagem}</p>
+          </div>)}
+        </aside>
+      )}
       <style>{`
         .app.tema-rosa { background: #fff0f6; min-height: 100vh; color: #382530; }
         .app.tema-rosa .conteudo { background-color: #fff0f6 !important; }
@@ -2138,94 +2528,27 @@ function App() {
 
       {tela === 'inicio' && (
         <>
-          <header className="topo">
-
-<div
-  className="topo-marca"
-  style={{
-    display: 'flex',
-    alignItems: 'center',
-    gap: '20px',
-    minWidth: 0,
-  }}
->
-  <img
-    src="/quitai-logo-horizontal.svg"
-    alt="Quitaí"
-    style={{
-      display: 'block',
-      width: '132px',
-      height: 'auto',
-      maxHeight: '58px',
-      objectFit: 'contain',
-      flexShrink: 0,
-    }}
-  />
-
-  <div
-    aria-hidden="true"
-    style={{
-      width: '1px',
-      height: '42px',
-      background: '#F3DCE7',
-      flexShrink: 0,
-    }}
-  />
-
-  <div style={{ minWidth: 0 }}>
-    <span
-      className="saudacao"
-      style={{
-        display: 'block',
-        marginBottom: '3px',
-        color: '#927C87',
-        fontSize: '12px',
-        fontWeight: 500,
-      }}
-    >
-      Olá! 👋
-    </span>
-
-    <h1
-      style={{
-        margin: 0,
-        color: '#30242C',
-        fontSize: '26px',
-        fontWeight: 700,
-        letterSpacing: '-0.7px',
-        lineHeight: 1.25,
-      }}
-    >
-      Minhas Vendas
-    </h1>
-
-    <p
-      style={{
-        margin: '4px 0 0',
-        color: '#C43F82',
-        fontSize: '12px',
-        fontWeight: 500,
-        lineHeight: 1.4,
-      }}
-    >
-      Seus recebimentos em ordem
-    </p>
-  </div>
-</div>
-
-
-            <button
-              className="botao-notificacao"
-              type="button"
-              onClick={abrirNotificacoes}
-              aria-label="Abrir notificações"
-              title="Notificações"
-              style={{ position: 'relative' }}
-            >
-              🔔
-              {obterNotificacoes().filter((item) => !notificacoesLidas.includes(item.id)).length > 0 && <span style={{ position: 'absolute', top: '-3px', right: '-3px', minWidth: '18px', height: '18px', padding: '0 4px', borderRadius: '20px', background: '#e92e8b', color: '#fff', fontSize: '11px', fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid #fff' }}>{obterNotificacoes().filter((item) => !notificacoesLidas.includes(item.id)).length}</span>} 
-            </button>
-
+          <header className="topo qa-home-header" style={{ display: 'block', width: '100%', minWidth: 0, height: 'auto', boxSizing: 'border-box', padding: '0', overflow: 'hidden' }}>
+            <div className="qa-home-header-inner" style={{ display: 'flex', width: '100%', maxWidth: '760px', minWidth: 0, margin: '0 auto', boxSizing: 'border-box', alignItems: 'center', justifyContent: 'space-between', gap: '18px' }}>
+              <div className="qa-home-header-main" style={{ display: 'flex', flex: '1 1 auto', minWidth: 0, width: 'auto', alignItems: 'center', gap: '18px' }}>
+                <div className="qa-home-header-logo" style={{ display: 'flex', flex: '0 0 64px', width: '64px', height: '64px', alignItems: 'center', justifyContent: 'center' }}>
+                  <img src="/quitai-logo-horizontal.svg" alt="QuitaAí" style={{ width: '58px', height: '58px', objectFit: 'contain' }} />
+                </div>
+                <div className="qa-home-header-text" style={{ display: 'block', flex: '1 1 auto', width: 'auto', minWidth: 0, maxWidth: 'none' }}>
+                  <span className="qa-home-header-greeting" style={{ display: 'block', width: '100%', whiteSpace: 'normal', overflowWrap: 'break-word' }}>
+                    Olá, {String(dadosConta?.nome || dadosConta?.name || usuarioSalvo.nome || usuarioSalvo.name || 'revendedora').trim().split(/\s+/)[0]}! 👋
+                  </span>
+                  <h1 style={{ display: 'block', width: '100%', maxWidth: 'none', margin: 0, whiteSpace: 'normal', wordBreak: 'normal' }}>Minhas Vendas</h1>
+                  <p style={{ display: 'block', width: '100%', maxWidth: 'none', margin: 0, whiteSpace: 'normal', wordBreak: 'normal' }}>Seus recebimentos em ordem ✨</p>
+                </div>
+              </div>
+              <button className="botao-notificacao qa-home-header-bell" type="button" onClick={abrirNotificacoes} aria-label="Abrir notificações" title="Notificações" style={{ position: 'relative', display: 'grid', flex: '0 0 46px', width: '46px', height: '46px', placeItems: 'center' }}>
+                <span aria-hidden="true">🔔</span>
+                {obterNotificacoes().filter((item) => !notificacoesLidas.includes(item.id)).length > 0 && (
+                  <span className="qa-home-header-count">{obterNotificacoes().filter((item) => !notificacoesLidas.includes(item.id)).length}</span>
+                )}
+              </button>
+            </div>
           </header>
 
           <main className="conteudo">
@@ -6491,7 +6814,7 @@ function App() {
           <header className="topo">
             <div>
               <span className="saudacao">QuitaAí</span>
-              <h1>{subTelaMais === 'conta' ? 'Minha conta' : subTelaMais === 'configuracoes' ? 'Configurações' : 'Mais opções'}</h1>
+              <h1>{subTelaMais === 'conta' ? 'Minha conta' : subTelaMais === 'configuracoes' ? 'Configurações' : subTelaMais === 'suporte' ? 'Central de Suporte' : subTelaMais === 'sobre' ? 'Sobre o Sistema' : subTelaMais === 'atualizacoes' ? 'Atualizações do Sistema' : 'Mais opções'}</h1>
             </div>
           </header>
 
@@ -6515,6 +6838,21 @@ function App() {
                   descricao: 'Ajuste as preferências do aplicativo',
                   simbolo: '⚙️',
                   acao: () => setSubTelaMais('configuracoes'),
+                }, {
+                  titulo: 'Central de Suporte',
+                  descricao: 'Encontre respostas e prepare uma solicitação',
+                  simbolo: '🎧',
+                  acao: () => { setMensagemSuporte(''); setSubTelaMais('suporte') },
+                }, {
+                  titulo: 'Atualizações do Sistema',
+                  descricao: 'Conheça as novidades e melhorias do QuitaAí',
+                  simbolo: '✨',
+                  acao: () => setSubTelaMais('atualizacoes'),
+                }, {
+                  titulo: 'Sobre o Sistema',
+                  descricao: 'Conheça o QuitaAí, suas funcionalidades e informações',
+                  simbolo: '✦',
+                  acao: () => setSubTelaMais('sobre'),
                 }].map((item) => (
                   <button
                     key={item.titulo}
@@ -6551,31 +6889,338 @@ function App() {
               </section>
             )}
 
-            {subTelaMais === 'conta' && (
-              <section className="secao">
-                <button type="button" onClick={() => setSubTelaMais('menu')} style={{ border: 0, background: 'transparent', color: '#c43f6d', padding: '0 0 18px', cursor: 'pointer', fontWeight: 700 }}>
-                  ← Voltar para Mais opções
-                </button>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '22px' }}>
-                  <div style={{ width: '58px', height: '58px', borderRadius: '50%', background: '#ffe6ef', display: 'grid', placeItems: 'center', fontSize: '27px' }}>👤</div>
+            {subTelaMais === 'atualizacoes' && (
+              <section className="secao quitai-atualizacoes">
+                <button type="button" onClick={() => setSubTelaMais('menu')} className="conta-voltar">← Mais opções</button>
+                <div className="atualizacoes-hero">
+                  <div className="atualizacoes-hero-icone" aria-hidden="true">✦</div>
                   <div>
-                    <h2 style={{ margin: '0 0 5px' }}>{usuarioSalvo.nome || usuarioSalvo.name || 'Minha conta QuitaAí'}</h2>
-                    <p style={{ margin: 0, color: '#777', fontSize: '14px' }}>{usuarioSalvo.email || 'E-mail não disponível'}</p>
+                    <span className="atualizacoes-selo">EVOLUÇÃO CONTÍNUA</span>
+                    <h2>Um QuitaAí cada vez melhor.</h2>
+                    <p>Acompanhe os recursos e melhorias que tornam a gestão das suas vendas mais simples.</p>
                   </div>
                 </div>
-                <div style={{ borderTop: '1px solid #f1e4e9' }}>
-                  <div style={{ padding: '15px 0', borderBottom: '1px solid #f1e4e9' }}>
-                    <span style={{ display: 'block', color: '#888', fontSize: '12px', marginBottom: '5px' }}>Nome</span>
-                    <strong>{usuarioSalvo.nome || usuarioSalvo.name || 'Não informado'}</strong>
+                <div className="atualizacoes-versao">
+                  <div>
+                    <span className="atualizacoes-etiqueta">VERSÃO ATUAL</span>
+                    <h3>QuitaAí · Versão em desenvolvimento</h3>
+                    <p>As funcionalidades são aprimoradas continuamente. A numeração oficial da versão será definida no lançamento.</p>
                   </div>
-                  <div style={{ padding: '15px 0', borderBottom: '1px solid #f1e4e9' }}>
-                    <span style={{ display: 'block', color: '#888', fontSize: '12px', marginBottom: '5px' }}>E-mail</span>
-                    <strong>{usuarioSalvo.email || 'Não informado'}</strong>
+                  <span className="atualizacoes-status"><span aria-hidden="true">●</span> Em evolução</span>
+                </div>
+                <div className="atualizacoes-cabecalho">
+                  <h3>Novidades do sistema</h3>
+                  <p>Recursos disponíveis na versão de desenvolvimento.</p>
+                </div>
+                <div className="atualizacoes-linha-tempo">
+                  {[
+                    {icone:'✦',titulo:'Sobre o Sistema',tipo:'Nova página',descricao:'Informações sobre o QuitaAí, suas funcionalidades e o desenvolvimento do projeto.'},
+                    {icone:'?',titulo:'Central de Suporte',tipo:'Nova página',descricao:'Perguntas frequentes, pesquisa de dúvidas e preparação de solicitações salvas localmente como rascunho.'},
+                    {icone:'♙',titulo:'Minha Conta',tipo:'Melhoria',descricao:'Área dedicada à consulta e à atualização dos dados da conta.'},
+                    {icone:'⚙',titulo:'Configurações',tipo:'Melhoria',descricao:'Preferências do aplicativo reunidas em uma área de fácil acesso.'},
+                    {icone:'▣',titulo:'Gestão de vendas',tipo:'Funcionalidade',descricao:'Organização de clientes, produtos, vendas, parcelas e registros de pagamentos.'},
+                  ].map((item,index)=>(
+                    <article className="atualizacoes-item" key={item.titulo}>
+                      <div className="atualizacoes-ponto" aria-hidden="true">{item.icone}</div>
+                      <div className="atualizacoes-item-conteudo">
+                        <div className="atualizacoes-item-topo">
+                          <h4>{item.titulo}</h4>
+                          <span className="atualizacoes-tipo">{item.tipo}</span>
+                        </div>
+                        <p>{item.descricao}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <div className="atualizacoes-proximos">
+                  <div className="atualizacoes-proximos-icone" aria-hidden="true">↗</div>
+                  <div>
+                    <h3>O que vem por aí?</h3>
+                    <p>Estamos planejando melhorias de segurança, testes de estabilidade e um modo de manutenção. Um chat de suporte poderá ser incluído em versões futuras.</p>
+                    <span>Funcionalidades planejadas — ainda não disponíveis.</span>
                   </div>
                 </div>
-                <p style={{ color: '#777', fontSize: '13px', lineHeight: 1.5, marginTop: '18px' }}>
-                  Para manter seus dados protegidos, saia da conta quando terminar de usar o aplicativo em um dispositivo compartilhado.
-                </p>
+                <p className="atualizacoes-rodape">QuitaAí · Desenvolvido por Marcos José Souza do Nascimento</p>
+              </section>
+            )}
+
+            {subTelaMais === 'sobre' && (
+              <section className="secao quitai-sobre">
+                <button type="button" onClick={() => setSubTelaMais('menu')} className="conta-voltar">← Mais opções</button>
+                <div className="sobre-hero">
+                  <div className="sobre-marca" aria-hidden="true">Q<span>✦</span></div>
+                  <div className="sobre-hero-texto">
+                    <span className="sobre-selo">CONHEÇA O SISTEMA</span>
+                    <h2>QuitaAí</h2>
+                    <p>Mais organização para suas vendas, mais tranquilidade para seu dia a dia.</p>
+                    <span className="sobre-versao">Painel de Gestão de Vendas · 2026</span>
+                  </div>
+                </div>
+                <div className="sobre-bloco">
+                  <span className="sobre-etiqueta">NOSSO PROPÓSITO</span>
+                  <h3>Seu negócio organizado em um só lugar.</h3>
+                  <p>O QuitaAí é uma ferramenta de gestão criada para facilitar o acompanhamento de clientes, produtos, vendas e recebimentos. Com informações centralizadas, fica mais simples consultar parcelas, registrar pagamentos e manter o controle financeiro das suas vendas.</p>
+                </div>
+                <div className="sobre-bloco">
+                  <span className="sobre-etiqueta">O QUE VOCÊ ENCONTRA AQUI</span>
+                  <h3>Funcionalidades do QuitaAí</h3>
+                  <div className="sobre-recursos">
+                    {[
+                      { icone: '👥', titulo: 'Clientes', descricao: 'Cadastre e consulte as informações dos seus clientes.' },
+                      { icone: '📦', titulo: 'Produtos', descricao: 'Organize os produtos disponíveis para suas vendas.' },
+                      { icone: '🛍️', titulo: 'Vendas', descricao: 'Registre e acompanhe suas vendas em um só lugar.' },
+                      { icone: '📅', titulo: 'Parcelas', descricao: 'Visualize vencimentos e acompanhe o que falta receber.' },
+                      { icone: '💗', titulo: 'Pagamentos', descricao: 'Registre recebimentos e acompanhe a quitação.' },
+                      { icone: '🎧', titulo: 'Ajuda', descricao: 'Consulte orientações na Central de Suporte.' },
+                    ].map((recurso) => (
+                      <div className="sobre-recurso" key={recurso.titulo}>
+                        <span className="sobre-recurso-icone" aria-hidden="true">{recurso.icone}</span>
+                        <div><strong>{recurso.titulo}</strong><p>{recurso.descricao}</p></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="sobre-bloco sobre-creditos">
+                  <span className="sobre-etiqueta">DESENVOLVIMENTO</span>
+                  <h3>Feito com atenção aos detalhes.</h3>
+                  <p>Desenvolvido por <strong>Marcos José Souza do Nascimento</strong>.</p>
+                  <p className="sobre-nota">Sistema de gestão web · React, Go e PostgreSQL</p>
+                </div>
+                <div className="sobre-bloco">
+                  <span className="sobre-etiqueta">TRANSPARÊNCIA</span>
+                  <h3>Informações e privacidade</h3>
+                  <p>Consulte os documentos institucionais para saber mais sobre as condições de uso e o tratamento de dados.</p>
+                  <div className="sobre-links">
+                    <a href="/termos-de-uso">Termos de Uso <span aria-hidden="true">↗</span></a>
+                    <a href="/politica-de-privacidade">Política de Privacidade <span aria-hidden="true">↗</span></a>
+                    <a href="/direitos-lgpd">Direitos LGPD <span aria-hidden="true">↗</span></a>
+                  </div>
+                </div>
+                <p className="sobre-rodape">© 2026 QuitaAí. Todos os direitos reservados.</p>
+              </section>
+            )}
+
+            {subTelaMais === 'suporte' && (
+              <section className="secao quitai-suporte">
+                <style>{`
+/* QuitaAí: barra de atualização e etiquetas profissionais de chamados */
+.quitai-suporte .qa-tickets-toolbar{display:flex;justify-content:flex-end;padding:8px 0 15px;border-bottom:1px solid #f2e2e9}
+.quitai-suporte .qa-refresh-btn{display:inline-flex;align-items:center;gap:8px;border:1px solid #edcbd9;background:#fff6f9;color:#a82d61;border-radius:12px;padding:11px 16px;font-size:13px;font-weight:700;cursor:pointer;transition:background .2s,transform .2s;box-shadow:0 2px 7px #aa47740a}
+.quitai-suporte .qa-refresh-btn:hover:not(:disabled){background:#ffe8f0;transform:translateY(-1px)}
+.quitai-suporte .qa-refresh-btn:disabled{opacity:.6;cursor:wait}
+.quitai-suporte .qa-refresh-btn>span{font-size:20px;line-height:14px}
+.quitai-suporte .qa-ticket-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:19px 0;border-bottom:1px solid #f3e5eb}
+.quitai-suporte .qa-ticket-row:last-of-type{border-bottom:0}
+.quitai-suporte .qa-ticket-info{display:flex;flex-direction:column;gap:9px;min-width:0;flex:1}
+.quitai-suporte .qa-ticket-number{font-size:10px;letter-spacing:1px;font-weight:800;color:#ad5c7f}
+.quitai-suporte .qa-ticket-info>strong{font-size:15px;color:#392431;line-height:1.4;overflow-wrap:anywhere}
+.quitai-suporte .qa-ticket-tags{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.quitai-suporte .qa-ticket-category,.quitai-suporte .qa-ticket-status{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 11px;font-size:11px;font-weight:700;line-height:1.2}
+.quitai-suporte .qa-ticket-category{background:#f6edf1;color:#7c5d6e;border:1px solid #eddde5}
+.quitai-suporte .qa-ticket-status{background:#fff5e7;color:#956019;border:1px solid #f5e1bb}
+.quitai-suporte .qa-ticket-status-em_andamento{background:#eaf2ff;color:#3464a9;border-color:#d2e1fc}
+.quitai-suporte .qa-ticket-status-resolvido{background:#e8f8ee;color:#21784b;border-color:#c7ebd6}
+.quitai-suporte .qa-ticket-dot{height:7px;width:7px;border-radius:50%;background:currentColor}
+.quitai-suporte .qa-ticket-open{display:inline-flex;align-items:center;gap:8px;justify-content:center;background:#b73571;color:#fff;border:1px solid #b73571;border-radius:11px;padding:11px 14px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .2s}
+.quitai-suporte .qa-ticket-open:hover{background:#952957}
+@media(max-width:540px){.quitai-suporte .qa-ticket-row{align-items:stretch;flex-direction:column;gap:14px}.quitai-suporte .qa-ticket-open{width:100%}.quitai-suporte .qa-tickets-toolbar{justify-content:stretch}.quitai-suporte .qa-refresh-btn{width:100%;justify-content:center}}
+`}</style>
+                <style>{`
+/* Conversa moderna do suporte — QuitaAí */
+.qa-chat{--qa-accent:#b93678;--qa-bg:#fff2f7;--qa-out:#f8d9e8;--qa-in:#fff;overflow:hidden;border:1px solid #ecd5e0;border-radius:20px;margin-top:20px;background:#fff}
+.qa-chat-header{display:flex;align-items:center;gap:11px;padding:14px 16px;background:var(--qa-accent);color:white}
+.qa-chat-back{border:0;background:transparent;color:white;font-size:25px;cursor:pointer;padding:3px 8px}
+.qa-chat-avatar{width:39px;height:39px;border-radius:50%;background:#ffffff2b;display:grid;place-items:center;font-weight:800;font-size:19px}
+.qa-chat-title{display:flex;flex-direction:column;gap:3px;min-width:0}.qa-chat-title strong{font-size:15px}.qa-chat-title small{font-size:11px;opacity:.88}
+.qa-chat-subject{background:#fff;padding:10px 16px;font-size:12px;color:#856b78;border-bottom:1px solid #f0dfe6;overflow-wrap:anywhere}
+.qa-chat-messages{display:flex;flex-direction:column;gap:11px;min-height:190px;max-height:450px;overflow-y:auto;padding:22px 16px;background:var(--qa-bg)}
+.qa-chat-bubble{width:fit-content;max-width:84%;padding:10px 13px 7px;border-radius:15px;box-shadow:0 2px 5px #2e14200b;overflow-wrap:anywhere}
+.qa-chat-in{align-self:flex-start;background:var(--qa-in);border-bottom-left-radius:4px}.qa-chat-out{align-self:flex-end;background:var(--qa-out);border-bottom-right-radius:4px}
+.qa-chat-sender{display:block;font-weight:750;font-size:11px;color:var(--qa-accent);margin-bottom:4px}
+.qa-chat-bubble p{font-size:14px;line-height:1.55;white-space:pre-wrap;margin:0;color:#302630}.qa-chat-bubble time{display:block;text-align:right;font-size:10px;color:#876d7b;margin-top:5px}
+.qa-chat-compose{display:flex;align-items:center;gap:10px;padding:12px;background:white;border-top:1px solid #f0dfe6}
+.qa-chat-compose textarea{flex:1;min-width:0;resize:vertical;border:1px solid #ead5df;border-radius:15px;padding:12px 14px;font:inherit;font-size:14px;outline-color:var(--qa-accent)}
+.qa-chat-compose button{border:0;border-radius:50%;width:44px;height:44px;flex:none;background:var(--qa-accent);color:white;font-size:20px;cursor:pointer}
+.qa-chat-compose button:disabled{opacity:.4;cursor:not-allowed}
+@media(max-width:550px){.qa-chat{border-radius:15px}.qa-chat-messages{padding:14px 10px}.qa-chat-bubble{max-width:92%}}
+`}</style>
+                <button type="button" onClick={() => setSubTelaMais('menu')} className="conta-voltar">← Mais opções</button>
+                <div className="suporte-hero">
+                  <span className="suporte-hero-icone" aria-hidden="true">✦</span>
+                  <div className="suporte-hero-conteudo"><span className="suporte-eyebrow">CENTRAL DE AJUDA</span><h2>Estamos aqui para ajudar.</h2><p>Encontre orientações sobre o QuitaAí e organize suas solicitações em um só lugar.</p><div className="suporte-hero-tags"><span>✓ Respostas rápidas</span><span>✓ Tudo organizado</span></div></div>
+                </div>
+                <div className="suporte-bloco">
+                  <div className="suporte-titulo-linha"><span className="suporte-titulo-icone">?</span><div><h3>Perguntas frequentes</h3><p>Talvez a resposta que você procura já esteja aqui.</p></div></div>
+                  <input className="suporte-busca" aria-label="Buscar perguntas frequentes" placeholder="Pesquise por vendas, pagamentos, conta..." value={buscaSuporte} onChange={(e) => setBuscaSuporte(e.target.value)} />
+                  <div className="suporte-faq">
+                    {perguntasSuporte.filter((item) => (item.pergunta + ' ' + item.resposta).toLocaleLowerCase('pt-BR').includes(buscaSuporte.toLocaleLowerCase('pt-BR'))).map((item) => {
+                      const indice = perguntasSuporte.indexOf(item)
+                      return <div className="suporte-faq-item" key={item.pergunta}>
+                        <button type="button" aria-expanded={faqAberta === indice} onClick={() => setFaqAberta(faqAberta === indice ? -1 : indice)}>{item.pergunta}<span>{faqAberta === indice ? '−' : '+'}</span></button>
+                        {faqAberta === indice && <p>{item.resposta}</p>}
+                      </div>
+                    })}
+                    {!perguntasSuporte.some((item) => (item.pergunta + ' ' + item.resposta).toLocaleLowerCase('pt-BR').includes(buscaSuporte.toLocaleLowerCase('pt-BR'))) && <p>Nenhuma pergunta encontrada.</p>}
+                  </div>
+                </div>
+                <div className="suporte-bloco" id="qa-suporte-novo-chamado">
+                  <div className="suporte-titulo-linha"><span className="suporte-titulo-icone">✎</span><div><h3>Enviar uma solicitação</h3><p>Descreva sua dúvida para que a equipe de suporte possa responder.</p></div></div>
+                  <p className="suporte-aviso">As solicitações enviadas são registradas no servidor e ficam disponíveis para a equipe de suporte.</p>
+                  <form className="suporte-formulario" onSubmit={enviarSolicitacaoSuporte}>
+                    <label>Categoria<select value={categoriaSuporte} onChange={(e) => setCategoriaSuporte(e.target.value)}>
+                      <option>Dúvidas gerais</option><option>Vendas e parcelas</option><option>Clientes e produtos</option><option>Acesso e conta</option><option>Problema técnico</option><option>Sugestões</option>
+                    </select></label>
+                    <label>Assunto<input maxLength={100} value={assuntoSuporte} onChange={(e) => setAssuntoSuporte(e.target.value)} placeholder="Ex.: Não consigo registrar um pagamento" required /></label>
+                    <label>Descreva sua solicitação<textarea rows={5} minLength={15} maxLength={2000} value={descricaoSuporte} onChange={(e) => setDescricaoSuporte(e.target.value)} placeholder="Explique o que aconteceu e o que você esperava..." required /></label>
+                    <button className="suporte-salvar" type="submit" disabled={enviandoSuporte}>{enviandoSuporte ? 'Enviando...' : 'Enviar solicitação'} <span aria-hidden="true">→</span></button>
+                    <button className="suporte-salvar" type="button" onClick={salvarRascunhoSuporte} disabled={enviandoSuporte} style={{marginTop: 8, background: '#fff', color: '#a52d60', border: '1px solid #e6b9ca'}}>Salvar como rascunho</button>
+                    {mensagemSuporte && <p role="status" className="suporte-mensagem">{mensagemSuporte}</p>}
+                  </form>
+                </div>
+                <div className="suporte-bloco">
+                  <div className="suporte-titulo-linha"><span className="suporte-titulo-icone">▤</span><div><h3>Meus rascunhos <span className="suporte-contador">{rascunhosSuporte.length}</span></h3><p>Solicitações guardadas neste dispositivo.</p></div></div>
+                  {rascunhosSuporte.length === 0 ? <div className="suporte-vazio"><span aria-hidden="true">▤</span><strong>Nenhum rascunho por enquanto</strong><p>Quando você preparar uma solicitação, ela aparecerá aqui.</p></div> : rascunhosSuporte.map((item) => (
+                    <div className="suporte-rascunho" key={item.id}>
+                      <div><strong>{item.assunto}</strong><small>{item.categoria} · {new Date(item.criadoEm).toLocaleDateString('pt-BR')} · Não enviado</small><p>{item.descricao}</p></div>
+                      <button type="button" onClick={() => {
+                        const atualizados = rascunhosSuporte.filter((r) => r.id !== item.id)
+                        setRascunhosSuporte(atualizados)
+                        localStorage.setItem('quitai_suporte_rascunhos', JSON.stringify(atualizados))
+                      }} aria-label={'Excluir rascunho ' + item.assunto}>Excluir</button>
+                    </div>
+                  ))}
+                </div>
+                <div className="suporte-bloco">
+                  <div className="suporte-titulo-linha"><span className="suporte-titulo-icone">✉</span><div><h3>Meus chamados <span className="suporte-contador">{chamadosSuporte.length}</span></h3><p>Acompanhe o andamento e as respostas da equipe.</p></div></div>
+                  <div className="qa-tickets-toolbar">
+                    <button className="qa-refresh-btn" type="button" onClick={carregarChamadosSuporte} disabled={carregandoChamadosSuporte}>
+                      <span aria-hidden="true">{carregandoChamadosSuporte ? '◌' : '↻'}</span>
+                      {carregandoChamadosSuporte ? 'Atualizando...' : 'Atualizar chamados'}
+                    </button>
+                  </div>
+                  {chamadosSuporte.length === 0 && !carregandoChamadosSuporte && <p>Nenhum chamado enviado até o momento.</p>}
+                  {chamadosSuporte.map((item) => (
+                    <div className="qa-ticket-row" key={item.id}>
+                      <div className="qa-ticket-info">
+                        <span className="qa-ticket-number">CHAMADO #{item.id}</span>
+                        <strong>{item.assunto}</strong>
+                        <div className="qa-ticket-tags">
+                          <span className="qa-ticket-category">{item.categoria}</span>
+                          <span className={'qa-ticket-status qa-ticket-status-' + item.status}>
+                            <span className="qa-ticket-dot" aria-hidden="true" />
+                            {item.status === 'em_andamento' ? 'Em andamento' : item.status === 'resolvido' ? 'Resolvido' : 'Aberto'}
+                          </span>
+                        </div>
+                      </div>
+                      <button className="qa-ticket-open" type="button" onClick={() => abrirChamadoSuporte(item.id)}>Ver conversa <span aria-hidden="true">→</span></button>
+                    </div>
+                  ))}
+                  {chamadoSelecionadoSuporte && (
+                    <div className="qa-chat qa-chat-rosa">
+                      <header className="qa-chat-header"><button type="button" className="qa-chat-back" onClick={() => setChamadoSelecionadoSuporte(null)}>←</button><span className="qa-chat-avatar">Q</span><div className="qa-chat-title"><strong>Suporte QuitaAí</strong><small>Chamado #{chamadoSelecionadoSuporte.id} · {chamadoSelecionadoSuporte.status === 'em_andamento' ? 'Em andamento' : chamadoSelecionadoSuporte.status === 'resolvido' ? 'Resolvido' : 'Aberto'}</small></div></header>
+                      <div className="qa-chat-subject">{chamadoSelecionadoSuporte.assunto}</div>
+                      <div className="qa-chat-messages" aria-label="Mensagens do chamado">
+                        {(chamadoSelecionadoSuporte.mensagens || []).map(msg => (
+                          <div key={msg.id} className={'qa-chat-bubble ' + (msg.autor_perfil === 'admin' ? 'qa-chat-in' : 'qa-chat-out')}>
+                            <span className="qa-chat-sender">{msg.autor_perfil === 'admin' ? 'Equipe QuitaAí' : 'Você'}</span>
+                            <p>{msg.mensagem}</p><time>{new Date(msg.criado_em).toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</time>
+                          </div>
+                        ))}
+                      </div>
+                      {chamadoSelecionadoSuporte.status === 'resolvido' ? (
+                        <div className="qa-chat-finalizado" role="status">
+                          <div className="qa-chat-finalizado-icone" aria-hidden="true">✓</div>
+                          <strong>Atendimento finalizado</strong>
+                          <p>Seu atendimento foi encerrado pela equipe QuitaAí. O histórico desta conversa continuará disponível para consulta.</p>
+                          <div className="qa-chat-finalizado-bloqueio">🔒 Esta conversa foi encerrada e não aceita novas mensagens.</div>
+                          <button type="button" className="qa-chat-novo-chamado" onClick={() => {
+                            setChamadoSelecionadoSuporte(null)
+                            setRespostaSuporte('')
+                            setAssuntoSuporte('')
+                            setDescricaoSuporte('')
+                            setMensagemSuporte('')
+                            document.getElementById('qa-suporte-novo-chamado')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                          }}>＋ Abrir novo chamado</button>
+                        </div>
+                      ) : (
+                        <form className="qa-chat-compose" onSubmit={responderChamadoSuporte}><textarea aria-label="Escrever mensagem" rows={2} maxLength={5000} placeholder="Digite sua mensagem..." value={respostaSuporte} onChange={e => setRespostaSuporte(e.target.value)} required /><button type="submit" disabled={respondendoSuporte || !respostaSuporte.trim()} aria-label="Enviar mensagem">➤</button></form>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            {subTelaMais === 'conta' && (
+              <section className="secao quitai-minha-conta">
+                <button type="button" onClick={() => setSubTelaMais('menu')} className="conta-voltar">← Mais opções</button>
+                <div className="conta-cabecalho">
+                  <div className="conta-perfil">
+                    <div className="conta-avatar" aria-hidden="true">{(dadosConta?.nome || dadosConta?.name || usuarioSalvo.nome || usuarioSalvo.name || 'R').trim().charAt(0).toUpperCase()}</div>
+                    <div className="conta-identidade">
+                      <span className="conta-eyebrow">PERFIL DA REVENDEDORA</span>
+                      <h2>{dadosConta?.nome || dadosConta?.name || usuarioSalvo.nome || usuarioSalvo.name || 'Minha conta'}</h2>
+                      <p>{dadosConta?.email || usuarioSalvo.email || 'E-mail não disponível'}</p>
+                      <span className="conta-tipo"><span aria-hidden="true">●</span> Conta de revendedora</span>
+                    </div>
+                  </div>
+                </div>
+                {erroConta && <p className="conta-erro" role="alert">{erroConta}</p>}
+                {mensagemConta && <p className="conta-sucesso" role="status">{mensagemConta}</p>}
+                <div className="conta-painel">
+                  <div className="conta-painel-titulo">
+                    <div><h3>Dados pessoais</h3><p>Informações vinculadas ao seu acesso ao QuitAÍ.</p></div>
+                    <span className="conta-leitura">Dados protegidos</span>
+                  </div>
+                  {!editandoConta && <div className="conta-campos">
+                    <div><span>Nome completo</span><strong>{dadosConta?.nome || dadosConta?.name || usuarioSalvo.nome || usuarioSalvo.name || 'Não informado'}</strong></div>
+                    <div><span>E-mail cadastrado</span><strong>{dadosConta?.email || usuarioSalvo.email || 'Não informado'}</strong></div>
+                    <div><span>Tipo de acesso</span><strong>Revendedora</strong></div>
+                  </div>}
+                  {editandoConta && (
+                    <form className="conta-formulario" onSubmit={salvarDadosConta}>
+                      <p className="conta-formulario-intro">Atualize suas informações abaixo. Os dados serão utilizados para identificar sua conta.</p>
+                      <label>Nome completo<input required minLength={2} maxLength={120} value={nomeConta} onChange={(e) => setNomeConta(e.target.value)} /></label>
+                      <label>E-mail<input required type="email" maxLength={254} value={emailConta} onChange={(e) => setEmailConta(e.target.value)} /></label>
+                      <div className="conta-acoes">
+                        <button type="submit" className="conta-atualizar" disabled={salvandoConta}>{salvandoConta ? 'Salvando...' : 'Salvar alterações'}</button>
+                        <button type="button" className="conta-secundario" onClick={() => { setEditandoConta(false); setErroConta(''); setNomeConta(dadosConta?.nome || ''); setEmailConta(dadosConta?.email || '') }}>Cancelar</button>
+                      </div>
+                    </form>
+                  )}
+                  {!editandoConta && (
+                    <div className="conta-acoes">
+                      <button type="button" className="conta-atualizar" onClick={() => { setMensagemConta(''); setEditandoConta(true) }}>✎ Editar informações</button>
+                      <button type="button" className="conta-secundario" onClick={atualizarDadosConta} disabled={carregandoConta}>{carregandoConta ? 'Atualizando...' : '↻ Recarregar dados'}</button>
+                    </div>
+                  )}
+                </div>
+                <div className="conta-painel">
+                  <div className="conta-painel-titulo"><div><h3>Segurança e senha</h3><p>Proteja sua conta com uma senha exclusiva.</p></div></div>
+                  {!alterandoSenha ? (
+                    <button type="button" className="conta-atualizar" onClick={() => { setMensagemConta(''); setAlterandoSenha(true) }}>🔒 Alterar senha</button>
+                  ) : (
+                    <form className="conta-formulario" onSubmit={salvarNovaSenha}>
+                      <p className="conta-formulario-intro">Por segurança, confirme sua senha atual antes de definir uma nova.</p>
+                      <label>Senha atual<input type="password" autoComplete="current-password" required value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} /></label>
+                      <label>Nova senha<input type="password" autoComplete="new-password" required minLength={8} maxLength={72} value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} /></label>
+                      <div className="conta-forca-senha" aria-live="polite">
+                        <div className="conta-forca-barras" aria-hidden="true">{[1,2,3,4].map((nivel) => <span key={nivel} className={novaSenha.length >= 8 && (Number(novaSenha.length >= 12) + Number(/[A-Z]/.test(novaSenha)) + Number(/[0-9]/.test(novaSenha)) + Number(/[^a-zA-Z0-9]/.test(novaSenha)) + 1) >= nivel ? 'ativa' : ''} />)}</div>
+                        <small>{!novaSenha ? 'Use pelo menos 8 caracteres.' : novaSenha.length < 8 ? 'Senha muito curta' : novaSenha.length >= 12 && /[A-Z]/.test(novaSenha) && /[0-9]/.test(novaSenha) ? 'Senha mais forte' : 'Adicione números, maiúsculas e mais caracteres para reforçar a senha.'}</small>
+                      </div>
+                      <label>Confirmar nova senha<input type="password" autoComplete="new-password" required value={confirmarSenha} onChange={(e) => setConfirmarSenha(e.target.value)} /></label>
+                      {confirmarSenha && novaSenha !== confirmarSenha && <small className="conta-validacao">As senhas ainda não coincidem.</small>}
+                      <div className="conta-acoes">
+                        <button type="submit" className="conta-atualizar" disabled={salvandoSenha}>{salvandoSenha ? 'Alterando...' : 'Salvar nova senha'}</button>
+                        <button type="button" className="conta-secundario" onClick={() => { setAlterandoSenha(false); setSenhaAtual(''); setNovaSenha(''); setConfirmarSenha(''); setErroConta('') }}>Cancelar</button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+                <div className="conta-seguranca">
+                  <span className="conta-seguranca-icone" aria-hidden="true">🔒</span>
+                  <div><strong>Segurança da sua conta</strong><p>Se estiver usando um dispositivo compartilhado, saia da sua conta ao terminar.</p></div>
+                </div>
               </section>
             )}
 
@@ -6771,112 +7416,64 @@ function App() {
         </>
       )}
 
+      {/* Rodapé institucional da área da revendedora */}
+      <footer style={{
+        margin: '24px 16px 92px', padding: '22px 16px',
+        borderTop: '1px solid var(--borda, #ead5df)',
+        textAlign: 'center', fontSize: 12, lineHeight: 1.8,
+        color: 'inherit', opacity: 0.85,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '8px 18px', marginBottom: 12 }}>
+          <a href="/termos-de-uso" style={{ color: 'inherit', textDecoration: 'underline' }}>Termos de Uso</a>
+          <a href="/politica-de-privacidade" style={{ color: 'inherit', textDecoration: 'underline' }}>Política de Privacidade</a>
+          <a href="/direitos-lgpd" style={{ color: 'inherit', textDecoration: 'underline' }}>Direitos LGPD</a>
+        </div>
+        <div style={{ borderTop: '1px solid currentColor', opacity: 0.2, maxWidth: 440, margin: '0 auto 12px' }} />
+        <div>© 2026 QuitAÍ | Painel Gestor. Todos os direitos reservados.</div>
+        <div>Desenvolvido por <strong>Marcos José Souza do Nascimento</strong></div>
+        <div>Engenharia de Software &amp; Desenvolvimento Web</div>
+      </footer>
+
       {/* =====================================================
           NAVEGAÇÃO INFERIOR
       ===================================================== */}
-
       <style>{`
-        .navegacao .nav-item:focus:not(:focus-visible) { outline: none !important; box-shadow: none !important; }
-        .navegacao .nav-item:focus-visible { outline: 2px solid #d94f88; outline-offset: 2px; }
-      `}</style>
+.navegacao .nav-item:focus:not(:focus-visible) { outline:none !important; box-shadow:none !important; }
+.navegacao .nav-item:focus-visible { outline:2px solid #d94f88; outline-offset:2px; }
+/* Navegação inferior moderna — identidade rosa QuitaAí */
+.navegacao.navegacao-moderna { display:flex; align-items:stretch; justify-content:space-around; gap:3px; padding:8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); background:var(--fundo-card,#fff); border-top:1px solid #f2dce7; box-shadow:0 -5px 22px rgba(132,35,85,.08); }
+.navegacao-moderna .nav-item { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; flex:1; min-width:0; min-height:54px; padding:5px 2px; border:0; border-radius:13px; background:transparent; color:#927789; font-size:11px; font-weight:600; line-height:1.15; cursor:pointer; transition:color .2s,background .2s,transform .2s; }
+.navegacao-moderna .nav-item .nav-icone { display:grid; place-items:center; width:40px; height:30px; border-radius:12px; transition:background .2s,transform .2s; }
+.navegacao-moderna .nav-item .nav-rotulo { font-size:11px; letter-spacing:.1px; }
+.navegacao-moderna .nav-item.ativo { color:#b52c73; font-weight:750; background:transparent; }
+.navegacao-moderna .nav-item.ativo .nav-icone { background:#fce4f0; transform:translateY(-1px); }
+.navegacao-moderna .nav-item:active { transform:scale(.96); }
+@media (hover:hover) { .navegacao-moderna .nav-item:hover { color:#b52c73; background:#fff4f9; } }
+@media (prefers-reduced-motion:reduce) { .navegacao-moderna .nav-item,.navegacao-moderna .nav-item .nav-icone { transition:none; } }
 
-      <nav className="navegacao">
-
-        <button
-          className={`nav-item ${
-            tela === 'inicio'
-              ? 'ativo'
-              : ''
-          }`}
-          type="button"
-          onClick={() =>
-            setTela('inicio')
-          }
-        >
-          <span>
-            ⌂
-          </span>
-
-          Início
+`}</style>
+      <nav className="navegacao navegacao-moderna" aria-label="Navegação principal">
+        <button type="button" className={`nav-item ${tela === 'inicio' ? 'ativo' : ''}`} aria-current={tela === 'inicio' ? 'page' : undefined} onClick={() => { setTela('inicio') }}>
+          <span className="nav-icone"><IconeNavegacao nome="inicio" /></span>
+          <span className="nav-rotulo">Início</span>
         </button>
-
-        <button
-          className={`nav-item ${
-            tela === 'vendas' ||
-            tela ===
-              'detalhes-venda'
-              ? 'ativo'
-              : ''
-          }`}
-          type="button"
-          onClick={() => {
-            setVendaSelecionada(
-              null
-            )
-            setErroDetalhesVenda(
-              ''
-            )
-            setAbaVendas('abertas')
-            setTela('vendas')
-          }}
-        >
-          <span>
-            🛒
-          </span>
-
-          Vendas
+        <button type="button" className={`nav-item ${tela === 'vendas' || tela === 'detalhes-venda' ? 'ativo' : ''}`} aria-current={tela === 'vendas' || tela === 'detalhes-venda' ? 'page' : undefined} onClick={() => { setVendaSelecionada(null); setErroDetalhesVenda(''); setAbaVendas('abertas'); setTela('vendas') }}>
+          <span className="nav-icone"><IconeNavegacao nome="vendas" /></span>
+          <span className="nav-rotulo">Vendas</span>
         </button>
-
-        <button
-          className={`nav-item ${
-            tela === 'clientes'
-              ? 'ativo'
-              : ''
-          }`}
-          type="button"
-          onClick={() =>
-            setTela('clientes')
-          }
-        >
-          <span>
-            👥
-          </span>
-
-          Clientes
+        <button type="button" className={`nav-item ${tela === 'clientes' ? 'ativo' : ''}`} aria-current={tela === 'clientes' ? 'page' : undefined} onClick={() => { setTela('clientes') }}>
+          <span className="nav-icone"><IconeNavegacao nome="clientes" /></span>
+          <span className="nav-rotulo">Clientes</span>
         </button>
-
-        <button
-          className={`nav-item ${
-            tela === 'produtos'
-              ? 'ativo'
-              : ''
-          }`}
-          type="button"
-          onClick={() =>
-            setTela('produtos')
-          }
-        >
-          <span>
-            📦
-          </span>
-
-          Produtos
+        <button type="button" className={`nav-item ${tela === 'produtos' ? 'ativo' : ''}`} aria-current={tela === 'produtos' ? 'page' : undefined} onClick={() => { setTela('produtos') }}>
+          <span className="nav-icone"><IconeNavegacao nome="produtos" /></span>
+          <span className="nav-rotulo">Produtos</span>
         </button>
-
-        <button
-          className={`nav-item ${tela === 'mais' ? 'ativo' : ''}`}
-          type="button"
-          onClick={() => setTela('mais')}
-        >
-          <span>
-            ☰
-          </span>
-
-          Mais
+        <button type="button" className={`nav-item ${tela === 'mais' ? 'ativo' : ''}`} aria-current={tela === 'mais' ? 'page' : undefined} onClick={() => { setTela('mais') }}>
+          <span className="nav-icone"><IconeNavegacao nome="mais" /></span>
+          <span className="nav-rotulo">Mais</span>
         </button>
-
       </nav>
-
     </div>
   )
 }

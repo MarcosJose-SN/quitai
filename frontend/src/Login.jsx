@@ -1,12 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import './Login.css'
 import logoQuitaAi from './assets/quitai-logo.svg'
 
 function Login({ onLogin }) {
-  const [nome, setNome] = useState('')
   const [email, setEmail] = useState('')
-  const [confirmarSenhaCadastro, setConfirmarSenhaCadastro] = useState('')
-  const [modoCadastro, setModoCadastro] = useState(false)
   const [senha, setSenha] = useState('')
   const [mostrarSenha, setMostrarSenha] = useState(false)
   const [lembrar, setLembrar] = useState(false)
@@ -14,12 +11,11 @@ function Login({ onLogin }) {
   const [erro, setErro] = useState('')
   const [mensagem, setMensagem] = useState('')
   const [modalRecuperacao, setModalRecuperacao] = useState(false)
-  const [etapaRecuperacao, setEtapaRecuperacao] = useState(1)
   const [codigoRecuperacao, setCodigoRecuperacao] = useState('')
   const [novaSenha, setNovaSenha] = useState('')
   const [confirmarSenha, setConfirmarSenha] = useState('')
-  const [googleCarregando, setGoogleCarregando] = useState(false)
-  const googleBotaoRef = useRef(null)
+  const [modalAjuda, setModalAjuda] = useState(false)
+  const [tipoAjuda, setTipoAjuda] = useState('')
 
   function salvarSessao(dados) {
     if (!dados?.token || !dados?.usuario) {
@@ -34,71 +30,6 @@ function Login({ onLogin }) {
     if (typeof onLogin === 'function') onLogin(dados.usuario)
   }
 
-  async function processarCredencialGoogle(response) {
-    setErro('')
-    setMensagem('')
-    try {
-      setGoogleCarregando(true)
-      const resposta = await fetch('http://localhost:8082/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify({ credential: response.credential }),
-      })
-      const dados = await resposta.json().catch(() => ({}))
-      if (!resposta.ok) {
-        throw new Error(dados.mensagem || dados.erro || 'Não foi possível entrar com Google.')
-      }
-      salvarSessao(dados)
-    } catch (error) {
-      setErro(error.message || 'Falha ao entrar com Google.')
-    } finally {
-      setGoogleCarregando(false)
-    }
-  }
-
-  useEffect(() => {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
-    if (!clientId) return
-
-    let tentativas = 0
-    const configurarGoogle = () => {
-      if (!window.google?.accounts?.id || !googleBotaoRef.current) {
-        tentativas += 1
-        if (tentativas < 30) window.setTimeout(configurarGoogle, 200)
-        return
-      }
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: processarCredencialGoogle,
-      })
-      googleBotaoRef.current.innerHTML = ''
-      window.google.accounts.id.renderButton(googleBotaoRef.current, {
-        type: 'standard',
-        theme: 'outline',
-        size: 'large',
-        text: 'continue_with',
-        shape: 'rectangular',
-        width: Math.min(320, googleBotaoRef.current.clientWidth || 320),
-        locale: 'pt-BR',
-      })
-    }
-
-    if (!document.querySelector('script[data-google-identity]')) {
-      const script = document.createElement('script')
-      script.src = 'https://accounts.google.com/gsi/client'
-      script.async = true
-      script.defer = true
-      script.dataset.googleIdentity = 'true'
-      script.onload = configurarGoogle
-      script.onerror = () => setErro('Não foi possível carregar o login do Google.')
-      document.head.appendChild(script)
-    } else {
-      configurarGoogle()
-    }
-
-    return () => {}
-  }, [])
-
   async function entrar(event) {
     event.preventDefault()
     setErro('')
@@ -112,7 +43,7 @@ function Login({ onLogin }) {
       setCarregando(true)
 
       const resposta = await fetch(
-        'http://localhost:8082/auth/login',
+        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/auth/login`,
         {
           method: 'POST',
           headers: {
@@ -165,7 +96,7 @@ function Login({ onLogin }) {
   }
 
   async function recuperarSenha(event) {
-    event.preventDefault()
+    event?.preventDefault?.()
     setErro('')
     setMensagem('')
     if (!email.trim()) {
@@ -174,15 +105,15 @@ function Login({ onLogin }) {
     }
     try {
       setCarregando(true)
-      const resposta = await fetch('http://localhost:8082/auth/recuperar-senha', {
+      const resposta = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/auth/recuperar-senha`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ email: email.trim() }),
       })
       const dados = await resposta.json().catch(() => ({}))
       if (!resposta.ok) throw new Error(dados.mensagem || dados.erro || 'Não foi possível solicitar a recuperação.')
+      setModalAjuda(false)
       setModalRecuperacao(true)
-      setEtapaRecuperacao(2)
       setMensagem(dados.mensagem || 'Se o e-mail estiver cadastrado, você receberá um código.')
     } catch (error) {
       setErro(error.message || 'Não foi possível solicitar a recuperação.')
@@ -205,7 +136,7 @@ function Login({ onLogin }) {
     }
     try {
       setCarregando(true)
-      const resposta = await fetch('http://localhost:8082/auth/redefinir-senha', {
+      const resposta = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/auth/redefinir-senha`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
@@ -217,7 +148,6 @@ function Login({ onLogin }) {
       const dados = await resposta.json().catch(() => ({}))
       if (!resposta.ok) throw new Error(dados.mensagem || dados.erro || 'Não foi possível redefinir a senha.')
       setModalRecuperacao(false)
-      setEtapaRecuperacao(1)
       setCodigoRecuperacao('')
       setNovaSenha('')
       setConfirmarSenha('')
@@ -229,81 +159,6 @@ function Login({ onLogin }) {
     } finally {
       setCarregando(false)
     }
-  }
-
-  async function criarConta(event) {
-    event.preventDefault()
-    setErro('')
-    setMensagem('')
-
-    if (!nome.trim()) {
-      setErro('Informe seu nome.')
-      return
-    }
-    if (!email.trim()) {
-      setErro('Informe seu e-mail.')
-      return
-    }
-    if (senha.length < 6) {
-      setErro('A senha deve ter pelo menos 6 caracteres.')
-      return
-    }
-    if (senha !== confirmarSenhaCadastro) {
-      setErro('As senhas não são iguais.')
-      return
-    }
-
-    try {
-      setCarregando(true)
-      const resposta = await fetch('http://localhost:8082/auth/cadastro', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          nome: nome.trim(),
-          email: email.trim(),
-          senha,
-        }),
-      })
-
-      const dados = await resposta.json().catch(() => ({}))
-      if (!resposta.ok) {
-        throw new Error(
-          dados.mensagem ||
-            dados.erro ||
-            'Não foi possível criar sua conta. Confira os dados e tente novamente.'
-        )
-      }
-
-      // Se a API já devolver token e usuário, inicia a sessão imediatamente.
-      if (dados.token && dados.usuario) {
-        salvarSessao(dados)
-        return
-      }
-
-      setModoCadastro(false)
-      setSenha('')
-      setConfirmarSenhaCadastro('')
-      setMensagem(
-        dados.mensagem ||
-          'Conta criada com sucesso! Entre com seu e-mail e sua senha.'
-      )
-    } catch (error) {
-      setErro(
-        error.message ||
-          'Não foi possível conectar ao servidor. Verifique se o backend está funcionando na porta 8082.'
-      )
-    } finally {
-      setCarregando(false)
-    }
-  }
-
-  function alternarModoCadastro() {
-    setModoCadastro((atual) => !atual)
-    setErro('')
-    setMensagem('')
   }
 
   return (
@@ -321,41 +176,21 @@ function Login({ onLogin }) {
             />
 
             <div className="login-marca-texto">
-              <h1>Quitaí</h1>
-              <p>Vendas simples - Recebimentos organizados.</p>
+              <h1>QuitaAí</h1>
+              <p>Vendas simples • Recebimentos organizados.</p>
             </div>
           </div>
         </header>
 
         <div className="login-introducao">
-          <h2>{modoCadastro ? 'Crie sua conta' : 'Bem-vinda de volta!'}</h2>
-          <p>
-            {modoCadastro
-              ? 'Cadastre-se para organizar suas vendas e recebimentos.'
-              : 'Entre na sua conta para continuar.'}
-          </p>
+          <h2>Bem-vinda de volta!</h2>
+          <p>Entre na sua conta para continuar.</p>
         </div>
 
         <form
           className="login-formulario"
-          onSubmit={modoCadastro ? criarConta : entrar}
+          onSubmit={entrar}
         >
-          {modoCadastro && (
-            <div className="login-grupo">
-              <label htmlFor="nome-cadastro">Nome completo</label>
-              <input
-                id="nome-cadastro"
-                name="nome"
-                type="text"
-                placeholder="Digite seu nome"
-                autoComplete="name"
-                value={nome}
-                onChange={(event) => setNome(event.target.value)}
-                required
-                disabled={carregando}
-              />
-            </div>
-          )}
 
           <div className="login-grupo">
             <label htmlFor="email">E-mail</label>
@@ -410,7 +245,7 @@ function Login({ onLogin }) {
                 name="senha"
                 type={mostrarSenha ? 'text' : 'password'}
                 placeholder="Digite sua senha"
-                autoComplete={modoCadastro ? "new-password" : "current-password"}
+                autoComplete="current-password"
                 value={senha}
                 onChange={(event) => setSenha(event.target.value)}
                 required
@@ -443,24 +278,6 @@ function Login({ onLogin }) {
             </div>
           </div>
 
-          {modoCadastro && (
-            <div className="login-grupo">
-              <label htmlFor="confirmar-senha-cadastro">Confirmar senha</label>
-              <input
-                id="confirmar-senha-cadastro"
-                name="confirmarSenha"
-                type={mostrarSenha ? 'text' : 'password'}
-                placeholder="Digite a senha novamente"
-                autoComplete="new-password"
-                value={confirmarSenhaCadastro}
-                onChange={(event) => setConfirmarSenhaCadastro(event.target.value)}
-                required
-                minLength={6}
-                disabled={carregando}
-              />
-            </div>
-          )}
-
           {erro && (
             <div className="login-erro" role="alert">
               {erro}
@@ -470,7 +287,6 @@ function Login({ onLogin }) {
             <div className="login-sucesso" role="status">{mensagem}</div>
           )}
 
-          {!modoCadastro && (
           <div className="login-opcoes">
             <label className="login-checkbox">
               <input
@@ -493,48 +309,52 @@ function Login({ onLogin }) {
               Esqueci minha senha
             </button>
           </div>
-          )}
 
           <button
             type="submit"
             className="login-botao-entrar"
             disabled={carregando}
           >
-            {carregando
-              ? (modoCadastro ? 'Criando conta...' : 'Entrando...')
-              : (modoCadastro ? 'Criar conta' : 'Entrar')}
+            {carregando ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
 
-        {!modoCadastro && (
-        <>
-        <div className="login-divisor">
-          <span></span>
-          <strong>ou</strong>
-          <span></span>
-        </div>
+        <div className="login-divisor"><span></span><strong>PRECISA DE AJUDA?</strong><span></span></div>
+        <button type="button" className="login-botao-ajuda" onClick={() => { setTipoAjuda(''); setModalAjuda(true); setErro('') }}>
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 13v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="12" width="4" height="7" rx="2"/><rect x="18" y="12" width="4" height="7" rx="2"/><path d="M20 19a5 5 0 0 1-5 3h-3"/></svg>
+          Preciso de ajuda para entrar
+        </button>
 
-        <div className="login-google-area">
-          <div ref={googleBotaoRef} className="login-google-oficial" />
-          {!import.meta.env.VITE_GOOGLE_CLIENT_ID && (
-            <p className="login-google-aviso">
-              Configure VITE_GOOGLE_CLIENT_ID para ativar o login Google.
-            </p>
-          )}
-          {googleCarregando && <p role="status">Conectando com Google...</p>}
-        </div>
-        </>
+        {modalAjuda && (
+          <div className="login-modal-fundo" role="presentation">
+            <section className="login-modal" role="dialog" aria-modal="true" aria-labelledby="ajuda-titulo">
+              <button type="button" className="login-modal-fechar" aria-label="Fechar ajuda" onClick={() => { setModalAjuda(false); setTipoAjuda(''); setErro('') }}>×</button>
+              <h2 id="ajuda-titulo">Ajuda para entrar</h2>
+              <p>Escolha o que aconteceu com seu acesso ao QuitaAí.</p>
+              {!tipoAjuda ? (
+                <div className="login-ajuda-opcoes">
+                  <button type="button" onClick={() => setTipoAjuda('senha')}><strong>Esqueci minha senha</strong><small>Receber um código no e-mail cadastrado</small></button>
+                  <button type="button" onClick={() => setTipoAjuda('email')}><strong>Esqueci meu e-mail</strong><small>Solicitar ajuda para localizar minha conta</small></button>
+                  <button type="button" onClick={() => setTipoAjuda('outro')}><strong>Outro problema de acesso</strong><small>Falar com o suporte</small></button>
+                </div>
+              ) : tipoAjuda === 'senha' ? (
+                <form className="login-formulario-recuperacao" onSubmit={async (event) => { await recuperarSenha(event); }}>
+                  <div className="login-grupo"><label htmlFor="ajuda-email">E-mail cadastrado</label><input id="ajuda-email" type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="seuemail@exemplo.com" required disabled={carregando}/></div>
+                  {erro && <div className="login-erro" role="alert">{erro}</div>}
+                  <button type="submit" className="login-botao-entrar" disabled={carregando}>{carregando ? 'Enviando...' : 'Enviar código de recuperação'}</button>
+                  <button type="button" className="login-link login-reenviar" onClick={() => { setTipoAjuda(''); setErro('') }}>Voltar às opções</button>
+                </form>
+              ) : (
+                <div className="login-ajuda-contato">
+                  <p>{tipoAjuda === 'email' ? 'Para recuperar seu e-mail de acesso, entre em contato com o suporte. A equipe precisará confirmar sua identidade antes de alterar qualquer dado.' : 'Descreva o problema ao suporte para receber orientação.'}</p>
+                  <a className="login-botao-entrar login-ajuda-email" href={`mailto:marcosjosesouzadonascimento@gmail.com?subject=${encodeURIComponent(tipoAjuda === 'email' ? 'QuitaAí - Esqueci meu e-mail de acesso' : 'QuitaAí - Problema de acesso')}&body=${encodeURIComponent('Olá, preciso de ajuda para acessar minha conta QuitaAí.\n\nMeu nome: \nDescrição do problema: ')}`}>Abrir e-mail para o suporte</a>
+                  <p className="login-ajuda-nota">O envio é feito pelo aplicativo de e-mail do seu dispositivo. Não envie sua senha ou códigos de recuperação.</p>
+                  <button type="button" className="login-link login-reenviar" onClick={() => setTipoAjuda('')}>Voltar às opções</button>
+                </div>
+              )}
+            </section>
+          </div>
         )}
-
-        <div className="login-criar-conta">
-          <span>
-            {modoCadastro ? 'Já possui uma conta?' : 'Ainda não possui uma conta?'}
-          </span>
-
-          <button type="button" onClick={alternarModoCadastro} disabled={carregando}>
-            {modoCadastro ? 'Entrar' : 'Criar minha conta'}
-          </button>
-        </div>
 
         {modalRecuperacao && (
           <div className="login-modal-fundo" role="presentation">
@@ -589,15 +409,15 @@ function Login({ onLogin }) {
           </div>
         )}
 
-        <footer class="login-rodape">
-           <span>© 2026 Quitaí</span>
-           <span class="login-rodape-ponto">·</span>
-           <a href="#termos">Termos</a>
-           <span class="login-rodape-ponto">·</span>
-          <a href="#privacidade">Privacidade</a>
-          <span class="login-rodape-ponto">·</span>
-          <a href="#suporte">Suporte</a>
-          <span class="login-rodape-versao">v1.0.0</span>
+        <footer className="login-rodape" style={{ flexWrap: 'wrap', rowGap: 8, justifyContent: 'center' }}>
+          <span>© 2026 QuitaAí</span>
+          <span className="login-rodape-ponto">·</span>
+          <a href="/termos-de-uso">Termos de Uso</a>
+          <span className="login-rodape-ponto">·</span>
+          <a href="/politica-de-privacidade">Privacidade</a>
+          <span className="login-rodape-ponto">·</span>
+          <a href="/direitos-lgpd">Direitos LGPD</a>
+          <span className="login-rodape-versao">v1.0.0</span>
         </footer>
       </section>
     </main>

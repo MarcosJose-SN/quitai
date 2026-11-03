@@ -1165,3 +1165,372 @@ button {
     gap: 10px;
   }
 }
+
+/* Minha Conta da Revendedora — celular, tablet e computador */
+.quitai-minha-conta { width: 100%; min-width: 0; }
+.conta-voltar { background: transparent; border: 0; color: #c43f6d; padding: 0 0 20px; font-weight: 700; text-align: left; }
+.conta-perfil { display: flex; gap: 16px; align-items: center; margin-bottom: 24px; min-width: 0; }
+.conta-avatar { width: 62px; height: 62px; flex: 0 0 62px; border-radius: 50%; background: #ffe6ef; display: grid; place-items: center; font-size: 28px; }
+.conta-identidade { min-width: 0; overflow-wrap: anywhere; }
+.conta-identidade h2 { margin: 0 0 5px; font-size: clamp(18px, 3vw, 23px); }
+.conta-identidade p { margin: 0 0 8px; color: #777; font-size: 14px; overflow-wrap: anywhere; }
+.conta-tipo { display: inline-block; border-radius: 30px; background: #ffe6ef; color: #9d315e; padding: 5px 10px; font-size: 12px; font-weight: 700; }
+.conta-campos > div { padding: 15px 0; border-bottom: 1px solid #f1e4e9; min-width: 0; overflow-wrap: anywhere; }
+.conta-campos span { display: block; color: #888; font-size: 12px; margin-bottom: 5px; }
+.conta-campos strong { display: block; font-size: 15px; }
+.conta-atualizar { margin-top: 20px; width: 100%; min-height: 48px; border-radius: 12px; background: #c43f6d; color: white; border: 0; font-weight: 700; font-size: 14px; }
+.conta-atualizar:disabled { opacity: .65; cursor: wait; }
+.conta-erro { color: #9d243b; background: #fff0f1; border: 1px solid #f3c5cd; border-radius: 10px; padding: 12px; overflow-wrap: anywhere; }
+.conta-aviso { color: #777; font-size: 13px; line-height: 1.6; margin-top: 18px; }
+@media (max-width: 480px) { .conta-perfil { align-items: flex-start; gap: 12px; } .conta-avatar { width: 50px; height: 50px; flex-basis: 50px; font-size: 24px; } }
+.app.tema-escuro .conta-tipo { background: #493043; color: #ffc5df; }
+.app.tema-escuro .conta-erro { background: #472b37; color: #ffd4df; border-color: #754455; }
+.app.tema-escuro .conta-atualizar { background: #c43f6d; color: #fff; }
+
+/* Minha conta • refinamento visual profissional */
+.quitai-minha-conta { --conta-ink:#352331; --conta-muted:#786b75; --conta-line:#f0e2e8; --conta-surface:#fff; max-width:860px; margin:0 auto; padding:clamp(16px,3vw,28px) !important; text-align:left; border-radius:22px; background:transparent !important; box-sizing:border-box; }
+.quitai-minha-conta .conta-voltar { display:inline-flex; align-items:center; min-height:38px; margin-bottom:18px; padding:6px 0; color:#b82f65; font-size:14px; cursor:pointer; }
+.quitai-minha-conta .conta-cabecalho { padding:clamp(20px,4vw,32px); border-radius:22px; background:linear-gradient(115deg,#fff 0%,#fff5f9 100%); border:1px solid #f0dce5; box-shadow:0 8px 26px rgba(105,48,74,.055); }
+.quitai-minha-conta .conta-perfil { margin:0; gap:20px; align-items:center; }
+.quitai-minha-conta .conta-avatar { width:78px; height:78px; flex:0 0 78px; border-radius:22px; background:linear-gradient(140deg,#cf497e,#a52d61); color:#fff; font-size:34px; font-weight:800; box-shadow:0 8px 18px rgba(179,51,102,.18); }
+.quitai-minha-conta .conta-eyebrow { display:block; color:#a94a72; font-size:11px; font-weight:800; letter-spacing:1.1px; margin-bottom:7px; }
+.quitai-minha-conta .conta-identidade h2 { color:#352331 !important; font-size:clamp(20px,3.2vw,27px); font-weight:800; line-height:1.25; margin:0 0 6px; }
+.quitai-minha-conta .conta-identidade p { color:#6e616a; font-size:14px; margin:0 0 11px; }
+.quitai-minha-conta .conta-tipo { color:#9d315e; background:#ffe7f0; padding:6px 11px; font-size:12px; }
+.quitai-minha-conta .conta-tipo span { color:#b82f65; margin-right:5px; font-size:9px; }
+.quitai-minha-conta .conta-painel { margin-top:20px; padding:clamp(20px,4vw,30px); background:#fff; border:1px solid #f0e2e8; border-radius:22px; box-shadow:0 8px 26px rgba(105,48,74,.045); }
+.quitai-minha-conta .conta-painel-titulo { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:20px; }
+.quitai-minha-conta .conta-painel-titulo h3 { margin:0 0 5px; font-size:19px; color:#352331; }
+.quitai-minha-conta .conta-painel-titulo p { margin:0; color:#786b75; font-size:13px; line-height:1.5; }
+.quitai-minha-conta .conta-leitura { flex-shrink:0; font-size:11px; font-weight:700; color:#946b7d; background:#fff2f7; padding:7px 10px; border-radius:8px; }
+.quitai-minha-conta .conta-campos { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.quitai-minha-conta .conta-campos > div { padding:16px 18px; border:1px solid #f0e4e9; border-radius:13px; background:#fffcfd; min-width:0; }
+.quitai-minha-conta .conta-campos span { color:#84747e; font-size:12px; margin-bottom:8px; }
+.quitai-minha-conta .conta-campos strong { color:#352331; font-size:15px; font-weight:700; overflow-wrap:anywhere; }
+.quitai-minha-conta .conta-atualizar { width:auto; min-width:210px; margin-top:22px; padding:0 22px; background:#bd386f; box-shadow:0 5px 14px rgba(189,56,111,.16); cursor:pointer; transition:background .2s,transform .2s; }
+.quitai-minha-conta .conta-atualizar:hover:not(:disabled) { background:#a82c60; transform:translateY(-1px); }
+.quitai-minha-conta .conta-seguranca { display:flex; gap:14px; align-items:flex-start; margin-top:18px; padding:18px 20px; border:1px solid #eedfe6; border-radius:15px; background:#fff9fb; }
+.quitai-minha-conta .conta-seguranca-icone { display:grid; place-items:center; width:34px; height:34px; flex:0 0 34px; background:#ffe5ef; color:#b6386b; border-radius:10px; font-size:23px; }
+.quitai-minha-conta .conta-seguranca strong { color:#48313d; font-size:14px; }
+.quitai-minha-conta .conta-seguranca p { margin:5px 0 0; color:#786b75; font-size:13px; line-height:1.5; }
+.quitai-minha-conta button:focus-visible { outline:3px solid #dc87ad; outline-offset:3px; }
+@media(max-width:620px) { .quitai-minha-conta { padding:12px !important; } .quitai-minha-conta .conta-perfil { align-items:flex-start; gap:13px; } .quitai-minha-conta .conta-avatar { width:56px; height:56px; flex-basis:56px; font-size:26px; border-radius:17px; } .quitai-minha-conta .conta-campos { grid-template-columns:1fr; } .quitai-minha-conta .conta-painel-titulo { flex-wrap:wrap; } .quitai-minha-conta .conta-atualizar { width:100%; } }
+.app.tema-escuro .quitai-minha-conta .conta-cabecalho, .app.tema-escuro .quitai-minha-conta .conta-painel, .app.tema-escuro .quitai-minha-conta .conta-seguranca { background:#24242c !important; border-color:#493d49 !important; }
+.app.tema-escuro .quitai-minha-conta .conta-campos > div { background:#292730 !important; border-color:#493d49 !important; }
+.app.tema-escuro .quitai-minha-conta .conta-identidade h2, .app.tema-escuro .quitai-minha-conta .conta-painel-titulo h3, .app.tema-escuro .quitai-minha-conta .conta-campos strong { color:#f7eaf1 !important; }
+.app.tema-escuro .quitai-minha-conta .conta-identidade p, .app.tema-escuro .quitai-minha-conta .conta-painel-titulo p, .app.tema-escuro .quitai-minha-conta .conta-seguranca p { color:#c9b9c5 !important; }
+
+/* Minha Conta — acabamento refinado 10/10, sem alterar componentes globais */
+.quitai-minha-conta {
+  max-width: 1080px !important;
+  width: min(100%, 1080px);
+  padding: clamp(16px, 2.8vw, 36px) !important;
+  padding-bottom: 110px !important;
+}
+.quitai-minha-conta .conta-voltar {
+  font-weight: 700;
+  letter-spacing: -.01em;
+  transition: color .18s ease, transform .18s ease;
+}
+.quitai-minha-conta .conta-voltar:hover { color:#92234e; transform:translateX(-3px); }
+.quitai-minha-conta .conta-cabecalho {
+  background: linear-gradient(115deg, #fff 0%, #fff4f8 78%, #ffedf4 100%);
+  border-radius: 24px;
+  padding: clamp(24px, 3.5vw, 38px);
+}
+.quitai-minha-conta .conta-identidade { min-width:0; }
+.quitai-minha-conta .conta-identidade h2 { overflow-wrap:anywhere; letter-spacing:-.035em; }
+.quitai-minha-conta .conta-identidade p { overflow-wrap:anywhere; }
+.quitai-minha-conta .conta-painel {
+  border-radius:24px;
+  padding:clamp(24px, 3.5vw, 38px);
+  margin-top:22px;
+}
+.quitai-minha-conta .conta-painel-titulo h3 { font-size:clamp(19px, 2vw, 23px); letter-spacing:-.025em; }
+.quitai-minha-conta .conta-campos { grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+.quitai-minha-conta .conta-campos > div {
+  display:flex; flex-direction:column; justify-content:center;
+  min-height:108px; padding:18px;
+  transition:border-color .18s ease, box-shadow .18s ease;
+}
+.quitai-minha-conta .conta-campos > div:hover { border-color:#e9c6d5; box-shadow:0 4px 14px rgba(113,46,77,.045); }
+.quitai-minha-conta .conta-campos strong { font-size:clamp(13px,1.25vw,15px); line-height:1.45; }
+.quitai-minha-conta .conta-atualizar { min-height:48px; border-radius:12px; font-weight:750; }
+.quitai-minha-conta .conta-seguranca { border-radius:17px; margin-top:20px; }
+.quitai-minha-conta .conta-seguranca-icone { font-size:17px; }
+@media (min-width: 700px) and (max-width: 1000px) {
+  .quitai-minha-conta .conta-campos { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .quitai-minha-conta .conta-campos > div:last-child { grid-column:1/-1; }
+}
+@media (max-width: 699px) {
+  .quitai-minha-conta { padding:14px !important; padding-bottom:110px !important; }
+  .quitai-minha-conta .conta-campos { grid-template-columns:1fr; gap:10px; }
+  .quitai-minha-conta .conta-campos > div { min-height:78px; padding:14px 16px; }
+  .quitai-minha-conta .conta-cabecalho, .quitai-minha-conta .conta-painel { padding:20px; border-radius:19px; }
+  .quitai-minha-conta .conta-painel-titulo { gap:12px; }
+  .quitai-minha-conta .conta-leitura { font-size:10px; }
+  .quitai-minha-conta .conta-seguranca { padding:15px; }
+}
+@media (max-width: 380px) {
+  .quitai-minha-conta .conta-perfil { gap:11px; }
+  .quitai-minha-conta .conta-avatar { width:48px; height:48px; flex-basis:48px; font-size:23px; }
+  .quitai-minha-conta .conta-identidade h2 { font-size:19px; }
+  .quitai-minha-conta .conta-painel-titulo { flex-direction:column; }
+}
+.app.tema-escuro .quitai-minha-conta .conta-cabecalho { background:linear-gradient(120deg,#29242c,#332530) !important; }
+.app.tema-escuro .quitai-minha-conta .conta-campos > div:hover { border-color:#79516a; }
+@media (prefers-reduced-motion: reduce) {
+  .quitai-minha-conta .conta-voltar, .quitai-minha-conta .conta-campos > div { transition:none; }
+}
+
+/* Minha Conta — correção final: largura e leitura dos campos */
+.quitai-minha-conta {
+  max-width: 1220px !important;
+  width: 100% !important;
+  margin-inline: auto;
+}
+.quitai-minha-conta .conta-campos {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.quitai-minha-conta .conta-campos > div:last-child {
+  grid-column: 1 / -1;
+  min-height: 78px;
+}
+.quitai-minha-conta .conta-campos strong {
+  font-size: 16px;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+@media (max-width: 699px) {
+  .quitai-minha-conta .conta-campos { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .quitai-minha-conta .conta-campos > div:last-child { grid-column: auto; }
+  .quitai-minha-conta .conta-campos strong { font-size: 15px; }
+}
+
+
+/* Minha Conta: edição de perfil e segurança */
+.quitai-minha-conta .conta-formulario { display:grid; gap:15px; margin-top:20px; }
+.quitai-minha-conta .conta-formulario label { display:grid; gap:7px; font-size:13px; font-weight:700; color:#654858; }
+.quitai-minha-conta .conta-formulario input { width:100%; min-width:0; box-sizing:border-box; padding:13px 14px; border:1px solid #e8cad7; border-radius:11px; background:#fff; color:#352331; font:inherit; }
+.quitai-minha-conta .conta-formulario input:focus { outline:2px solid #ed9cbd; outline-offset:1px; }
+.quitai-minha-conta .conta-acoes { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:17px; }
+.quitai-minha-conta .conta-acoes .conta-atualizar { margin-top:0; }
+.quitai-minha-conta .conta-secundario { border:1px solid #e8cad7; background:#fff; color:#9d315e; border-radius:11px; padding:12px 16px; font-weight:700; cursor:pointer; }
+.quitai-minha-conta .conta-sucesso { padding:12px 15px; border:1px solid #b8dec8; background:#effaf2; color:#20643c; border-radius:11px; }
+@media(max-width:520px) { .quitai-minha-conta .conta-acoes { align-items:stretch; flex-direction:column; } .quitai-minha-conta .conta-acoes button { width:100%; } }
+
+
+/* Refinamento dos formulários Minha Conta */
+.quitai-minha-conta .conta-formulario { gap:18px; padding-top:4px; }
+.quitai-minha-conta .conta-formulario-intro { margin:0 0 2px; font-size:13px; line-height:1.6; color:#806b77; }
+.quitai-minha-conta .conta-formulario label { gap:9px; font-size:14px; letter-spacing:.005em; }
+.quitai-minha-conta .conta-formulario input { min-height:51px; padding:13px 16px; border-color:#e9d8e0; border-radius:12px; background:#fff; font-size:15px; font-weight:500; transition:border-color .18s,box-shadow .18s; }
+.quitai-minha-conta .conta-formulario input:hover { border-color:#d8a9bc; }
+.quitai-minha-conta .conta-formulario input:focus { outline:0; border-color:#b93670; box-shadow:0 0 0 3px rgba(185,54,112,.11); }
+.quitai-minha-conta .conta-acoes { gap:12px; margin-top:9px; padding-top:10px; }
+.quitai-minha-conta .conta-acoes .conta-atualizar { min-height:48px; min-width:0; border-radius:12px; font-size:14px; }
+.quitai-minha-conta .conta-secundario { min-height:48px; padding:0 22px; border-radius:12px; font-size:14px; transition:background .2s,border-color .2s; }
+.quitai-minha-conta .conta-secundario:hover { background:#fff1f6; border-color:#d8a9bc; }
+.quitai-minha-conta .conta-atualizar:disabled { opacity:.65; cursor:wait; }
+.quitai-minha-conta .conta-forca-senha { display:grid; gap:8px; margin-top:-7px; }
+.quitai-minha-conta .conta-forca-barras { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+.quitai-minha-conta .conta-forca-barras span { height:5px; border-radius:20px; background:#f0e2e8; }
+.quitai-minha-conta .conta-forca-barras span.ativa { background:#b93670; }
+.quitai-minha-conta .conta-forca-senha small { color:#82707a; line-height:1.5; }
+.quitai-minha-conta .conta-validacao { color:#b32650; font-weight:600; }
+.quitai-minha-conta .conta-painel { transition:box-shadow .2s; }
+.quitai-minha-conta .conta-painel:focus-within { box-shadow:0 8px 28px rgba(165,50,102,.08); }
+.app.tema-escuro .quitai-minha-conta .conta-formulario input { background:#302a34; color:#f9edf3; border-color:#645060; }
+.app.tema-escuro .quitai-minha-conta .conta-formulario label { color:#f2dbe7; }
+.app.tema-escuro .quitai-minha-conta .conta-formulario-intro, .app.tema-escuro .quitai-minha-conta .conta-forca-senha small { color:#cbb7c3; }
+.app.tema-escuro .quitai-minha-conta .conta-secundario { background:#302a34; color:#ffb6d2; border-color:#645060; }
+@media(max-width:520px) { .quitai-minha-conta .conta-formulario { gap:16px; } .quitai-minha-conta .conta-acoes { padding-top:4px; } }
+
+/* Central de Suporte da revendedora */
+.quitai-suporte{max-width:800px;margin:0 auto;width:100%;box-sizing:border-box}
+.quitai-suporte .suporte-hero{display:flex;gap:18px;align-items:center;padding:25px;background:linear-gradient(125deg,#fff0f6,#ffe3ee);border:1px solid #f5d4e1;border-radius:18px;margin:15px 0 22px}
+.quitai-suporte .suporte-hero-icone{font-size:34px;background:#fff;border-radius:14px;padding:12px}
+.quitai-suporte h2,.quitai-suporte h3{margin:0 0 9px;color:#543244}
+.quitai-suporte .suporte-hero p,.quitai-suporte .suporte-bloco>p{margin:0;color:#806575;line-height:1.6;font-size:14px}
+.quitai-suporte .suporte-bloco{background:#fff;border:1px solid #f0dce5;border-radius:18px;padding:23px;margin:0 0 18px}
+.quitai-suporte .suporte-busca,.quitai-suporte .suporte-formulario input,.quitai-suporte .suporte-formulario select,.quitai-suporte .suporte-formulario textarea{width:100%;box-sizing:border-box;border:1px solid #e8d7e0;border-radius:11px;background:#fff;padding:13px 14px;font:inherit;color:#473340;outline:none}
+.quitai-suporte .suporte-busca:focus,.quitai-suporte .suporte-formulario :is(input,select,textarea):focus{border-color:#c63e7b;box-shadow:0 0 0 3px #c63e7b19}
+.quitai-suporte .suporte-faq{margin-top:14px}
+.quitai-suporte .suporte-faq-item{border-bottom:1px solid #f3e7ed}
+.quitai-suporte .suporte-faq-item button{width:100%;background:none;border:0;display:flex;justify-content:space-between;gap:12px;padding:16px 2px;text-align:left;color:#513848;font-weight:650;cursor:pointer;font-size:14px}
+.quitai-suporte .suporte-faq-item button span{color:#c43b77;font-size:21px}
+.quitai-suporte .suporte-faq-item p{margin:0;padding:0 5px 16px;color:#766572;line-height:1.65;font-size:14px}
+.quitai-suporte .suporte-aviso{padding:12px 14px;background:#fff4f7;border-radius:10px;margin:12px 0 20px!important}
+.quitai-suporte .suporte-formulario{display:grid;gap:16px}
+.quitai-suporte .suporte-formulario label{display:grid;gap:7px;color:#594351;font-weight:600;font-size:14px}
+.quitai-suporte .suporte-formulario textarea{resize:vertical;min-height:110px}
+.quitai-suporte .suporte-salvar{border:0;border-radius:11px;background:#bd3975;color:white;font-weight:700;padding:14px 20px;cursor:pointer}
+.quitai-suporte .suporte-salvar:hover{background:#a52f65}
+.quitai-suporte .suporte-mensagem{color:#80506b;font-size:13px;line-height:1.5;margin:0}
+.quitai-suporte .suporte-contador{font-size:12px;background:#fae5ee;color:#ad396e;border-radius:99px;padding:4px 9px}
+.quitai-suporte .suporte-vazio{padding:12px 0}
+.quitai-suporte .suporte-rascunho{display:flex;justify-content:space-between;gap:16px;padding:15px 0;border-top:1px solid #f1e3ea}
+.quitai-suporte .suporte-rascunho strong,.quitai-suporte .suporte-rascunho small{display:block}
+.quitai-suporte .suporte-rascunho small{margin-top:5px;color:#967b89}
+.quitai-suporte .suporte-rascunho p{margin:9px 0 0;color:#756470;white-space:pre-wrap;overflow-wrap:anywhere}
+.quitai-suporte .suporte-rascunho button{align-self:flex-start;border:1px solid #edcddc;border-radius:9px;background:#fff5f9;color:#a72e62;padding:9px;cursor:pointer}
+.app.tema-escuro .quitai-suporte .suporte-bloco{background:#211d27;border-color:#4e3a48}
+.app.tema-escuro .quitai-suporte .suporte-hero{background:#372332;border-color:#69425a}
+.app.tema-escuro .quitai-suporte :is(h2,h3,.suporte-faq-item button,.suporte-formulario label,.suporte-rascunho strong){color:#f7e5ef}
+.app.tema-escuro .quitai-suporte :is(.suporte-busca,.suporte-formulario input,.suporte-formulario select,.suporte-formulario textarea){background:#302a34;border-color:#625062;color:#fff}
+.app.tema-escuro .quitai-suporte .suporte-aviso{background:#3c2a38}
+@media(max-width:520px){.quitai-suporte .suporte-bloco{padding:17px}.quitai-suporte .suporte-hero{padding:18px;align-items:flex-start}.quitai-suporte .suporte-hero-icone{font-size:25px;padding:9px}}
+
+
+/* Central de Suporte — acabamento visual premium */
+.quitai-suporte{max-width:850px;padding-bottom:38px}
+.quitai-suporte .conta-voltar{margin-bottom:18px}
+.quitai-suporte .suporte-hero{position:relative;overflow:hidden;align-items:flex-start;gap:23px;padding:35px 38px;margin:10px 0 23px;border:1px solid #f3cfdd;border-radius:24px;background:linear-gradient(115deg,#fff9fc 0%,#ffeaf2 65%,#fce0ec 100%);box-shadow:0 10px 32px rgba(130,48,87,.045)}
+.quitai-suporte .suporte-hero:after{content:"";position:absolute;width:210px;height:210px;border:1px solid rgba(188,57,112,.11);border-radius:50%;right:-95px;top:-110px;pointer-events:none}
+.quitai-suporte .suporte-hero-icone{flex:none;width:62px;height:62px;display:grid;place-items:center;box-sizing:border-box;border-radius:19px;font-size:31px;font-weight:700;color:#b93470;background:#fff;box-shadow:0 7px 22px rgba(165,58,105,.1)}
+.quitai-suporte .suporte-eyebrow{display:block;margin:1px 0 9px;color:#ae3b70;font-size:11px;font-weight:800;letter-spacing:.14em}
+.quitai-suporte .suporte-hero h2{font-size:clamp(23px,3.2vw,30px);letter-spacing:-.04em;line-height:1.2;margin:0 0 10px}
+.quitai-suporte .suporte-hero p{max-width:510px;font-size:14px;line-height:1.65}
+.quitai-suporte .suporte-hero-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px}
+.quitai-suporte .suporte-hero-tags span{background:#ffffffbd;color:#9d3e6b;border:1px solid #f5d9e5;padding:7px 10px;border-radius:30px;font-size:11px;font-weight:750}
+.quitai-suporte .suporte-bloco{padding:29px 32px;margin-bottom:20px;border-radius:22px;box-shadow:0 7px 28px rgba(111,45,75,.035)}
+.quitai-suporte .suporte-titulo-linha{display:flex;gap:14px;align-items:center;margin-bottom:23px}
+.quitai-suporte .suporte-titulo-icone{flex:none;display:grid;place-items:center;width:43px;height:43px;border-radius:13px;background:#fff0f6;color:#bd3975;font-size:23px;font-weight:800}
+.quitai-suporte .suporte-titulo-linha h3{font-size:19px;line-height:1.3;letter-spacing:-.02em;margin:0 0 3px}
+.quitai-suporte .suporte-titulo-linha p{font-size:12px;color:#9a8390;margin:0;line-height:1.5}
+.quitai-suporte .suporte-busca{background:#fffafd;padding:15px 17px;font-size:14px}
+.quitai-suporte .suporte-faq{margin-top:14px}
+.quitai-suporte .suporte-faq-item:last-child{border-bottom:0}
+.quitai-suporte .suporte-faq-item button{font-size:14px;font-weight:650;padding:19px 4px;align-items:center;transition:color .2s}
+.quitai-suporte .suporte-faq-item button:hover,.quitai-suporte .suporte-faq-item button[aria-expanded=true]{color:#b63470}
+.quitai-suporte .suporte-faq-item button span{width:27px;height:27px;display:grid;place-items:center;flex:none;border-radius:8px;background:#fff1f7;color:#b63470;font-size:19px}
+.quitai-suporte .suporte-faq-item p{padding:0 35px 20px 4px;font-size:13px}
+.quitai-suporte .suporte-aviso{border:1px solid #f7dfeb;background:#fff7fa;padding:15px 18px!important;text-align:left;font-size:12px!important;margin:0 0 24px!important}
+.quitai-suporte .suporte-aviso strong{color:#a93268}
+.quitai-suporte .suporte-formulario{gap:20px}
+.quitai-suporte .suporte-formulario label{font-size:13px;gap:9px;text-align:left}
+.quitai-suporte .suporte-formulario input,.quitai-suporte .suporte-formulario select,.quitai-suporte .suporte-formulario textarea{font-size:14px;font-weight:450;min-height:50px;padding:14px 16px}
+.quitai-suporte .suporte-formulario textarea{min-height:145px;line-height:1.6}
+.quitai-suporte .suporte-formulario input::placeholder,.quitai-suporte .suporte-formulario textarea::placeholder{color:#a696a0;font-weight:400}
+.quitai-suporte .suporte-salvar{min-height:51px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:14px;letter-spacing:.01em;transition:transform .15s,box-shadow .15s,background .15s}
+.quitai-suporte .suporte-salvar:hover{box-shadow:0 8px 18px #bd39752a;transform:translateY(-1px)}
+.quitai-suporte .suporte-vazio{padding:28px 14px 22px;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center}
+.quitai-suporte .suporte-vazio>span{display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:#fff0f6;color:#b93670;font-size:28px;margin-bottom:4px}
+.quitai-suporte .suporte-vazio strong{color:#604253;font-size:14px}
+.quitai-suporte .suporte-vazio p{font-size:12px;color:#9a8390;margin:0;line-height:1.5}
+.quitai-suporte .suporte-rascunho{align-items:flex-start}
+.quitai-suporte .suporte-rascunho>div{min-width:0}
+.quitai-suporte .suporte-rascunho button:hover{background:#fbe2ed}
+.app.tema-escuro .quitai-suporte .suporte-hero{background:linear-gradient(115deg,#302331,#402839);border-color:#604257}
+.app.tema-escuro .quitai-suporte .suporte-hero-icone,.app.tema-escuro .quitai-suporte .suporte-titulo-icone,.app.tema-escuro .quitai-suporte .suporte-vazio>span,.app.tema-escuro .quitai-suporte .suporte-faq-item button span{background:#4d3041;color:#ffc3dc}
+.app.tema-escuro .quitai-suporte .suporte-titulo-linha p,.app.tema-escuro .quitai-suporte .suporte-vazio p{color:#c1a8b8}
+.app.tema-escuro .quitai-suporte .suporte-vazio strong{color:#f8e3ef}
+.app.tema-escuro .quitai-suporte .suporte-hero-tags span{background:#53374a;border-color:#785168;color:#f8c7de}
+@media(max-width:600px){.quitai-suporte .suporte-hero{padding:24px 20px;gap:15px;border-radius:19px}.quitai-suporte .suporte-hero-icone{width:48px;height:48px;font-size:25px;border-radius:14px}.quitai-suporte .suporte-bloco{padding:23px 19px;border-radius:18px}.quitai-suporte .suporte-titulo-linha h3{font-size:17px}.quitai-suporte .suporte-titulo-icone{width:38px;height:38px;font-size:20px}.quitai-suporte .suporte-hero-tags{gap:5px}}
+@media(max-width:390px){.quitai-suporte .suporte-hero{flex-direction:column}.quitai-suporte .suporte-hero h2{font-size:24px}}
+
+/* Sobre o Sistema */
+.quitai-sobre{max-width:920px;margin:0 auto;padding-bottom:20px}
+.sobre-hero{display:flex;align-items:center;gap:24px;padding:30px;border-radius:22px;background:linear-gradient(125deg,#a92d67,#dc6c9b 68%,#f4a4bf);color:white;margin:18px 0 20px;box-shadow:0 12px 32px rgba(167,46,99,.16)}
+.sobre-marca{width:88px;height:88px;border-radius:24px;background:rgba(255,255,255,.19);border:1px solid rgba(255,255,255,.32);display:grid;place-items:center;font-size:52px;font-weight:800;flex-shrink:0;position:relative}
+.sobre-marca span{font-size:16px;position:absolute;top:12px;right:13px}
+.sobre-hero h2{font-size:34px;margin:5px 0 7px;color:white;letter-spacing:-1px}
+.sobre-hero p{margin:0 0 12px;line-height:1.6;max-width:480px;color:#fff}
+.sobre-selo,.sobre-etiqueta{font-size:11px;letter-spacing:1.5px;font-weight:800}
+.sobre-selo{color:#ffe6f0}.sobre-versao{display:inline-block;border:1px solid rgba(255,255,255,.5);border-radius:30px;padding:5px 11px;font-size:12px}
+.sobre-bloco{padding:24px;margin-bottom:16px;border:1px solid #f0dce5;border-radius:18px;background:#fff;box-shadow:0 4px 16px rgba(120,50,80,.04)}
+.sobre-etiqueta{color:#c43f7c}.sobre-bloco h3{font-size:20px;margin:9px 0 10px;color:#442c39}.sobre-bloco>p{color:#765e6b;line-height:1.75;font-size:14px;margin:0 0 8px}
+.sobre-recursos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px}
+.sobre-recurso{display:flex;gap:12px;align-items:flex-start;padding:15px;background:#fff8fb;border:1px solid #f6e4ec;border-radius:14px}
+.sobre-recurso-icone{font-size:22px;width:38px;height:38px;display:grid;place-items:center;background:#ffe6f0;border-radius:11px;flex-shrink:0}
+.sobre-recurso strong{font-size:14px;color:#4b3140}.sobre-recurso p{font-size:12px;line-height:1.55;margin:4px 0 0;color:#806c77}
+.sobre-nota{font-size:12px!important;opacity:.8}.sobre-links{display:flex;flex-wrap:wrap;gap:10px;margin-top:17px}
+.sobre-links a{display:flex;align-items:center;gap:8px;text-decoration:none;border:1px solid #edcbd9;background:#fff4f8;color:#a82d66;border-radius:11px;padding:10px 13px;font-size:13px;font-weight:700}
+.sobre-links a:hover{background:#ffe2ee}.sobre-rodape{text-align:center;font-size:12px;color:#9b7d8c;margin:22px 0}
+@media(max-width:620px){.sobre-hero{padding:23px;gap:15px}.sobre-marca{width:65px;height:65px;font-size:39px;border-radius:18px}.sobre-hero h2{font-size:27px}.sobre-bloco{padding:19px}.sobre-recursos{grid-template-columns:1fr}.sobre-links{flex-direction:column}.sobre-links a{justify-content:space-between}}
+/* Tema escuro: acompanha a classe/atributo do aplicativo */
+body[data-tema="escuro"] .sobre-bloco,body.tema-escuro .sobre-bloco,[data-theme="dark"] .sobre-bloco{background:#29242e;border-color:#514354}
+body[data-tema="escuro"] .sobre-bloco h3,body.tema-escuro .sobre-bloco h3,[data-theme="dark"] .sobre-bloco h3{color:#fff1f7}
+body[data-tema="escuro"] .sobre-bloco p,body.tema-escuro .sobre-bloco p,[data-theme="dark"] .sobre-bloco p{color:#d6bfcb}
+body[data-tema="escuro"] .sobre-recurso,body.tema-escuro .sobre-recurso,[data-theme="dark"] .sobre-recurso{background:#352c37;border-color:#544050}
+body[data-tema="escuro"] .sobre-recurso strong,body.tema-escuro .sobre-recurso strong,[data-theme="dark"] .sobre-recurso strong{color:#fff1f7}
+
+
+/* Atualizações do Sistema */
+.quitai-atualizacoes{max-width:920px;margin:0 auto;padding-bottom:24px}
+.atualizacoes-hero{display:flex;align-items:center;gap:23px;padding:32px;border-radius:22px;background:linear-gradient(120deg,#fff8fb,#ffe4ef);border:1px solid #f4d4e1;margin:18px 0 20px}
+.atualizacoes-hero-icone{display:grid;place-items:center;flex:none;width:72px;height:72px;border-radius:22px;background:#fff;color:#b73272;font-size:39px;box-shadow:0 8px 22px #a92d6714}
+.atualizacoes-selo,.atualizacoes-etiqueta{font-size:11px;letter-spacing:1.4px;font-weight:800;color:#b43672}
+.atualizacoes-hero h2{font-size:27px;line-height:1.2;letter-spacing:-.7px;color:#492e3c;margin:7px 0 9px}
+.atualizacoes-hero p{font-size:14px;line-height:1.65;color:#805b70;margin:0;max-width:560px}
+.atualizacoes-versao{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:24px 27px;background:#fff;border:1px solid #f1dbe5;border-radius:19px;box-shadow:0 6px 22px #69314908}
+.atualizacoes-versao h3{font-size:18px;margin:8px 0;color:#493140}
+.atualizacoes-versao p{font-size:13px;line-height:1.6;color:#8a7180;margin:0;max-width:550px}
+.atualizacoes-status{white-space:nowrap;display:inline-flex;gap:7px;align-items:center;background:#fff0f6;color:#a93268;border:1px solid #f3d3e0;padding:9px 12px;border-radius:40px;font-size:12px;font-weight:750}
+.atualizacoes-status span{font-size:9px}
+.atualizacoes-cabecalho{margin:32px 0 19px}
+.atualizacoes-cabecalho h3{font-size:21px;color:#493140;margin:0 0 5px}
+.atualizacoes-cabecalho p{font-size:13px;color:#94798a;margin:0}
+.atualizacoes-linha-tempo{position:relative;padding-left:28px}
+.atualizacoes-linha-tempo:before{content:"";position:absolute;left:18px;top:26px;bottom:35px;width:2px;background:#f2d4e1}
+.atualizacoes-item{display:flex;align-items:flex-start;gap:15px;position:relative;margin-bottom:14px;margin-left:-28px}
+.atualizacoes-ponto{position:relative;z-index:1;display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:12px;background:#fff0f6;border:1px solid #f2d6e3;color:#ae326b;font-size:19px}
+.atualizacoes-item-conteudo{flex:1;min-width:0;background:#fff;border:1px solid #f1dce6;border-radius:16px;padding:19px 21px;box-shadow:0 4px 16px #69314906}
+.atualizacoes-item-topo{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.atualizacoes-item h4{margin:0;color:#493140;font-size:15px}
+.atualizacoes-tipo{background:#fff2f7;color:#a93268;border-radius:30px;padding:5px 9px;font-size:11px;font-weight:700}
+.atualizacoes-item p{font-size:13px;line-height:1.7;color:#826c78;margin:10px 0 0}
+.atualizacoes-proximos{display:flex;gap:16px;padding:23px 24px;background:#fff8fb;border:1px dashed #e7b6ca;border-radius:18px;margin-top:23px}
+.atualizacoes-proximos-icone{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:12px;background:#ffe8f1;color:#ad326b;font-size:23px}
+.atualizacoes-proximos h3{font-size:17px;color:#493140;margin:0 0 8px}
+.atualizacoes-proximos p{font-size:13px;line-height:1.7;color:#826c78;margin:0 0 10px}
+.atualizacoes-proximos span{font-size:11px;color:#a83b71;font-weight:700}
+.atualizacoes-rodape{text-align:center;font-size:12px;color:#a08392;margin:25px 0 0}
+.app.tema-escuro .atualizacoes-hero{background:linear-gradient(120deg,#342632,#4a2b3c);border-color:#664557}
+.app.tema-escuro .atualizacoes-hero-icone,.app.tema-escuro .atualizacoes-ponto,.app.tema-escuro .atualizacoes-proximos-icone{background:#58364a;color:#ffd0e3;border-color:#785166}
+.app.tema-escuro .atualizacoes-versao,.app.tema-escuro .atualizacoes-item-conteudo{background:#302631;border-color:#61475a}
+.app.tema-escuro .atualizacoes-proximos{background:#352835;border-color:#785166}
+.app.tema-escuro .atualizacoes-hero h2,.app.tema-escuro .atualizacoes-versao h3,.app.tema-escuro .atualizacoes-cabecalho h3,.app.tema-escuro .atualizacoes-item h4,.app.tema-escuro .atualizacoes-proximos h3{color:#ffeef5}
+.app.tema-escuro .atualizacoes-hero p,.app.tema-escuro .atualizacoes-versao p,.app.tema-escuro .atualizacoes-item p,.app.tema-escuro .atualizacoes-proximos p{color:#d8bfcf}
+.app.tema-escuro .atualizacoes-status,.app.tema-escuro .atualizacoes-tipo{background:#573448;color:#ffc4dc;border-color:#79526a}
+@media(max-width:600px){.atualizacoes-hero{padding:23px 19px;gap:14px}.atualizacoes-hero-icone{width:50px;height:50px;font-size:28px;border-radius:15px}.atualizacoes-hero h2{font-size:22px}.atualizacoes-versao{align-items:flex-start;flex-direction:column;padding:20px}.atualizacoes-item-conteudo{padding:16px}.atualizacoes-proximos{padding:18px}}
+
+
+
+/* Cabeçalho QuitaAí — versão compacta, sem conflitos de largura */
+.app .topo.qa-home-header {
+  position: relative !important;
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 0 !important;
+  background: linear-gradient(110deg, #fff8fb 0%, #fff0f6 65%, #ffe4ef 100%) !important;
+  border-bottom: 1px solid #f6dbe7;
+}
+.app .qa-home-header-inner { padding: 22px 24px !important; }
+.app .qa-home-header-main { flex-direction: row !important; }
+.app .qa-home-header-logo { border-radius: 17px; background: #ffffffa6; box-shadow: 0 5px 18px #c74b8014; }
+.app .qa-home-header-text { text-align: left !important; }
+.app .qa-home-header-greeting { color: #a44970 !important; font-size: 13px !important; font-weight: 600 !important; line-height: 1.4 !important; margin: 0 0 4px !important; }
+.app .qa-home-header-text h1 { font-size: clamp(24px, 3.5vw, 31px) !important; font-weight: 800 !important; letter-spacing: -.035em !important; line-height: 1.18 !important; color: #55273e !important; }
+.app .qa-home-header-text p { font-size: 12px !important; line-height: 1.5 !important; color: #9e5677 !important; margin-top: 5px !important; }
+.app .qa-home-header-bell { border-radius: 50% !important; border: 1px solid #f7dce7 !important; background: #fff !important; box-shadow: 0 6px 18px #bc4e7b17; transition: transform .22s ease, box-shadow .22s ease; }
+.app .qa-home-header-bell:hover { transform: translateY(-2px); box-shadow: 0 9px 20px #bc4e7b27; }
+.app .qa-home-header-bell:has(.qa-home-header-count) > span:first-child { animation: qa-home-bell 3s ease-in-out infinite; transform-origin: top center; }
+.app .qa-home-header-count { position: absolute; top: -5px; right: -5px; display: grid; place-items: center; min-width: 20px; height: 20px; padding: 0 4px; border: 2px solid white; border-radius: 20px; background: #dc3b7b; color: white; font-size: 10px; font-weight: 800; }
+@keyframes qa-home-bell { 0%,84%,100% {transform:rotate(0)} 88% {transform:rotate(11deg)} 92% {transform:rotate(-9deg)} 96% {transform:rotate(4deg)} }
+@media (max-width: 480px) {
+  .app .qa-home-header-inner { padding: 18px 16px !important; gap: 10px !important; }
+  .app .qa-home-header-main { gap: 11px !important; }
+  .app .qa-home-header-logo { flex-basis: 49px !important; width: 49px !important; height: 49px !important; }
+  .app .qa-home-header-logo img { width: 46px !important; height: 46px !important; }
+  .app .qa-home-header-text h1 { font-size: 23px !important; }
+  .app .qa-home-header-bell { flex-basis: 42px !important; width: 42px !important; height: 42px !important; }
+}
+.app.tema-escuro .topo.qa-home-header { background: linear-gradient(110deg,#30222d,#4c2a3e) !important; border-color: #654055; }
+.app.tema-escuro .qa-home-header-text h1 { color: #fff0f6 !important; }
+.app.tema-escuro .qa-home-header-greeting,.app.tema-escuro .qa-home-header-text p { color: #efbad1 !important; }
+@media (prefers-reduced-motion: reduce) { .app .qa-home-header-bell:has(.qa-home-header-count) > span:first-child { animation: none; } }

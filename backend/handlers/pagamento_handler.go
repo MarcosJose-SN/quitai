@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -57,7 +58,7 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "Parcela inválida", http.StatusBadRequest)
 			return
 		}
-		if pagamento.Valor <= 0 {
+		if math.IsNaN(pagamento.Valor) || math.IsInf(pagamento.Valor, 0) || pagamento.Valor <= 0 || pagamento.Valor > 90000000000000 || math.Abs(pagamento.Valor*100-math.Round(pagamento.Valor*100)) > 0.000001 {
 			http.Error(w, "O valor do pagamento deve ser maior que zero", http.StatusBadRequest)
 			return
 		}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"regexp"
 	"strconv"
@@ -17,9 +18,11 @@ import (
 )
 
 type UsuarioResponse struct {
-	ID    int    `json:"id"`
-	Nome  string `json:"nome"`
-	Email string `json:"email"`
+	ID     int    `json:"id"`
+	Nome   string `json:"nome"`
+	Email  string `json:"email"`
+	Perfil string `json:"perfil"`
+	Ativo  bool   `json:"ativo"`
 }
 
 type cadastroRequest struct {
@@ -44,97 +47,32 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
+type usuarioIDKey struct{}
+
 func Cadastro(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+			responderErro(w, http.StatusMethodNotAllowed, "Método não permitido.")
 			return
 		}
 
-		var req cadastroRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			responderErro(w, http.StatusBadRequest, "Dados inválidos")
-			return
-		}
-
-		req.Nome = strings.TrimSpace(req.Nome)
-		req.Email = normalizarEmail(req.Email)
-
-		if req.Nome == "" {
-			responderErro(w, http.StatusBadRequest, "Informe seu nome.")
-			return
-		}
-
-		if !emailValido(req.Email) {
-			responderErro(w, http.StatusBadRequest, "Informe um e-mail válido.")
-			return
-		}
-
-		if len(req.Senha) < 6 {
-			responderErro(w, http.StatusBadRequest, "A senha deve ter pelo menos 6 caracteres.")
-			return
-		}
-
-		var existe bool
-		err := db.QueryRow(
-			"SELECT EXISTS(SELECT 1 FROM usuarios WHERE LOWER(email) = LOWER($1))",
-			req.Email,
-		).Scan(&existe)
-		if err != nil {
-			responderErro(w, http.StatusInternalServerError, "Erro ao verificar o cadastro.")
-			return
-		}
-
-		if existe {
-			responderErro(w, http.StatusConflict, "Já existe uma conta com este e-mail.")
-			return
-		}
-
-		hash, err := bcrypt.GenerateFromPassword([]byte(req.Senha), bcrypt.DefaultCost)
-		if err != nil {
-			responderErro(w, http.StatusInternalServerError, "Erro ao proteger a senha.")
-			return
-		}
-
-		var usuario UsuarioResponse
-		err = db.QueryRow(`
-			INSERT INTO usuarios (nome, email, senha_hash)
-			VALUES ($1, $2, $3)
-			RETURNING id, nome, email
-		`, req.Nome, req.Email, string(hash)).Scan(
-			&usuario.ID,
-			&usuario.Nome,
-			&usuario.Email,
+		responderErro(
+			w,
+			http.StatusForbidden,
+			"Cadastro público desativado. Solicite acesso ao administrador.",
 		)
-
-		if err != nil {
-			responderErro(w, http.StatusInternalServerError, "Não foi possível criar a conta.")
-			return
-		}
-
-		token, err := gerarToken(usuario)
-		if err != nil {
-			responderErro(w, http.StatusInternalServerError, "Conta criada, mas não foi possível iniciar a sessão.")
-			return
-		}
-
-		responderJSON(w, http.StatusCreated, authResponse{
-			Token:   token,
-			Usuario: usuario,
-		})
 	}
 }
-
 func Login(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
+			responderErro(w, http.StatusMethodNotAllowed, "Método não permitido.")
 			return
 		}
 
 		var req loginRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			responderErro(w, http.StatusBadRequest, "Dados inválidos")
+			responderErro(w, http.StatusBadRequest, "Dados inválidos.")
 			return
 		}
 
@@ -144,7 +82,7 @@ func Login(db *sql.DB) http.HandlerFunc {
 		var senhaHash string
 
 		err := db.QueryRow(`
-			SELECT id, nome, email, senha_hash
+			SELECT id, nome, email, senha_hash, perfil, ativo
 			FROM usuarios
 			WHERE LOWER(email) = LOWER($1)
 		`, req.Email).Scan(
@@ -152,6 +90,8 @@ func Login(db *sql.DB) http.HandlerFunc {
 			&usuario.Nome,
 			&usuario.Email,
 			&senhaHash,
+			&usuario.Perfil,
+			&usuario.Ativo,
 		)
 
 		if err == sql.ErrNoRows {
@@ -166,6 +106,11 @@ func Login(db *sql.DB) http.HandlerFunc {
 
 		if err := bcrypt.CompareHashAndPassword([]byte(senhaHash), []byte(req.Senha)); err != nil {
 			responderErro(w, http.StatusUnauthorized, "E-mail ou senha inválidos.")
+			return
+		}
+
+		if !usuario.Ativo {
+			responderErro(w, http.StatusForbidden, "Esta conta está bloqueada. Entre em contato com o suporte.")
 			return
 		}
 
@@ -192,10 +137,16 @@ func Me(db *sql.DB) http.HandlerFunc {
 
 		var usuario UsuarioResponse
 		err := db.QueryRow(`
-			SELECT id, nome, email
+			SELECT id, nome, email, perfil, ativo
 			FROM usuarios
 			WHERE id = $1
-		`, usuarioID).Scan(&usuario.ID, &usuario.Nome, &usuario.Email)
+		`, usuarioID).Scan(
+			&usuario.ID,
+			&usuario.Nome,
+			&usuario.Email,
+			&usuario.Perfil,
+			&usuario.Ativo,
+		)
 
 		if err == sql.ErrNoRows {
 			responderErro(w, http.StatusUnauthorized, "Usuário não encontrado.")
@@ -207,10 +158,17 @@ func Me(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		if !usuario.Ativo {
+			responderErro(w, http.StatusForbidden, "Esta conta está bloqueada.")
+			return
+		}
+
 		responderJSON(w, http.StatusOK, usuario)
 	}
 }
 
+// AuthMiddleware valida o token JWT.
+// Mantido para compatibilidade com os handlers e testes existentes.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
@@ -231,14 +189,19 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		claims := &Claims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			if token.Method != jwt.SigningMethodHS256 {
-				return nil, errors.New("método de assinatura inválido")
-			}
-			return []byte(jwtSecret()), nil
-		})
+		token, err := jwt.ParseWithClaims(
+			tokenString,
+			claims,
+			func(token *jwt.Token) (interface{}, error) {
+				if token.Method != jwt.SigningMethodHS256 {
+					return nil, errors.New("método de assinatura inválido")
+				}
+				return []byte(jwtSecret()), nil
+			},
+			jwt.WithExpirationRequired(),
+		)
 
-		if err != nil || !token.Valid {
+		if err != nil || token == nil || !token.Valid || claims.UsuarioID <= 0 {
 			responderErro(w, http.StatusUnauthorized, "Sessão inválida ou expirada.")
 			return
 		}
@@ -248,15 +211,101 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// AuthMiddlewareComDB também verifica se a conta continua ativa.
+// Use nas rotas comerciais para que bloqueios tenham efeito imediato.
+func AuthMiddlewareComDB(db *sql.DB, next http.Handler) http.Handler {
+	return AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		usuarioID, ok := UsuarioID(r)
+		if !ok {
+			responderErro(w, http.StatusUnauthorized, "Sessão inválida ou expirada.")
+			return
+		}
+
+		var ativo bool
+		err := db.QueryRow(
+			"SELECT ativo FROM usuarios WHERE id = $1",
+			usuarioID,
+		).Scan(&ativo)
+
+		if err == sql.ErrNoRows {
+			responderErro(w, http.StatusUnauthorized, "Usuário não encontrado.")
+			return
+		}
+
+		if err != nil {
+			responderErro(w, http.StatusInternalServerError, "Erro ao verificar a conta.")
+			return
+		}
+
+		if !ativo {
+			responderErro(w, http.StatusForbidden, "Esta conta está bloqueada.")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	}))
+}
+
+// AdminMiddleware só permite acesso a contas ativas com perfil admin.
+func AdminMiddleware(db *sql.DB, next http.Handler) http.Handler {
+	return AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		usuarioID, ok := UsuarioID(r)
+		if !ok {
+			responderErro(w, http.StatusUnauthorized, "Sessão inválida ou expirada.")
+			return
+		}
+
+		var perfil string
+		var ativo bool
+
+		err := db.QueryRow(`
+			SELECT perfil, ativo
+			FROM usuarios
+			WHERE id = $1
+		`, usuarioID).Scan(&perfil, &ativo)
+
+		if err == sql.ErrNoRows {
+			responderErro(w, http.StatusUnauthorized, "Usuário não encontrado.")
+			return
+		}
+
+		if err != nil {
+			responderErro(w, http.StatusInternalServerError, "Erro ao validar permissões.")
+			return
+		}
+
+		if !ativo {
+			responderErro(w, http.StatusForbidden, "Esta conta está bloqueada.")
+			return
+		}
+
+		if perfil != "admin" {
+			responderErro(w, http.StatusForbidden, "Acesso restrito ao administrador.")
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	}))
+}
+
 func UsuarioID(r *http.Request) (int, bool) {
 	id, ok := r.Context().Value(usuarioIDKey{}).(int)
 	return id, ok && id > 0
 }
 
-type usuarioIDKey struct{}
-
 func gerarToken(usuario UsuarioResponse) (string, error) {
 	agora := time.Now()
+
 	claims := Claims{
 		UsuarioID: usuario.ID,
 		Email:     usuario.Email,
@@ -274,11 +323,20 @@ func gerarToken(usuario UsuarioResponse) (string, error) {
 
 func jwtSecret() string {
 	secret := strings.TrimSpace(os.Getenv("QUITAIA_JWT_SECRET"))
-	if secret != "" {
-		return secret
+
+	if len([]byte(secret)) < 32 {
+		return ""
 	}
 
-	return "quitai-desenvolvimento-chave-local-2026-trocar-em-producao"
+	return secret
+}
+
+func ValidarJWTSecret() error {
+	if jwtSecret() == "" {
+		return errors.New("QUITAIA_JWT_SECRET não configurada ou possui menos de 32 bytes")
+	}
+
+	return nil
 }
 
 func normalizarEmail(email string) string {
@@ -304,4 +362,13 @@ func responderJSON(w http.ResponseWriter, status int, valor interface{}) {
 
 func stringID(id int) string {
 	return strconv.Itoa(id)
+}
+
+func TokenAindaValido(r *http.Request) bool {
+    autorizado := false
+    verificador := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+        autorizado = true
+    }))
+    verificador.ServeHTTP(httptest.NewRecorder(), r)
+    return autorizado
 }
