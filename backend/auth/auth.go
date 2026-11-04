@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -280,6 +281,7 @@ func AdminMiddleware(db *sql.DB, next http.Handler) http.Handler {
 		}
 
 		if err != nil {
+			log.Printf("Falha na consulta de permissões administrativas: %v", err)
 			responderErro(w, http.StatusInternalServerError, "Erro ao validar permissões.")
 			return
 		}
@@ -365,10 +367,10 @@ func stringID(id int) string {
 }
 
 func TokenAindaValido(r *http.Request) bool {
-    autorizado := false
-    verificador := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-        autorizado = true
-    }))
-    verificador.ServeHTTP(httptest.NewRecorder(), r)
-    return autorizado
+	autorizado := false
+	verificador := AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		autorizado = true
+	}))
+	verificador.ServeHTTP(httptest.NewRecorder(), r)
+	return autorizado
 }
