@@ -549,3 +549,21 @@
   object-fit: contain !important; flex: none !important;
   transform: none !important;
 }
+
+/* Dashboard: saudacao responsiva em dispositivos moveis */
+@media (max-width: 600px) {
+  .admin-welcome {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-welcome > div:first-child {
+    width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .admin-welcome > div:last-child {
+    align-self: center;
+  }
+}
