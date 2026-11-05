@@ -1,6 +1,6 @@
 import GestaoAvisosAdmin from './GestaoAvisosAdmin'
 import { conectarEventosSuporte } from '../../services/suporteEventos'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8082'
 const cores = { aberto: '#b45309', em_andamento: '#1d4ed8', resolvido: '#15803d' }
@@ -29,12 +29,18 @@ function dataHora(valor) {
 export default function CentralSuporteAdmin({ onVoltar }) {
   const [chamados, setChamados] = useState([])
   const [selecionado, setSelecionado] = useState(null)
+  const selecionadoRef = useRef(null)
+  const versaoDetalheRef = useRef(0)
   const [detalhe, setDetalhe] = useState(null)
+  const [carregandoDetalhe, setCarregandoDetalhe] = useState(false)
+  const carregandoDetalheRef = useRef(false)
   const [filtro, setFiltro] = useState('todos')
   const [busca, setBusca] = useState('')
   const [resposta, setResposta] = useState('')
   const [carregando, setCarregando] = useState(true)
   const [processando, setProcessando] = useState(false)
+  const processandoRef = useRef(false)
+  processandoRef.current = processando
   const [erro, setErro] = useState('')
   const [sucesso, setSucesso] = useState('')
   const [confirmarEncerramento, setConfirmarEncerramento] = useState(false)
@@ -46,15 +52,32 @@ export default function CentralSuporteAdmin({ onVoltar }) {
   }, [])
 
   const abrir = useCallback(async (id) => {
+    const versao = ++versaoDetalheRef.current
     setErro('')
     setSucesso('')
+    selecionadoRef.current = id
     setSelecionado(id)
+    setResposta('')
+    carregandoDetalheRef.current = true
+    setCarregandoDetalhe(true)
     setDetalhe(null)
     try {
       const dados = await api(`/admin/suporte/${id}`)
+      if (selecionadoRef.current !== id || versaoDetalheRef.current !== versao) return
       setDetalhe(dados)
     } catch (e) {
+      if (selecionadoRef.current !== id || versaoDetalheRef.current !== versao) return
       setErro(e.message)
+    } finally {
+      if (selecionadoRef.current === id && versaoDetalheRef.current === versao) { carregandoDetalheRef.current = false; setCarregandoDetalhe(false) }
+    }
+  }, [])
+
+  const atualizarDetalhe = useCallback(async (id) => {
+    const versao = ++versaoDetalheRef.current
+    const dados = await api(`/admin/suporte/${id}`)
+    if (selecionadoRef.current === id && versaoDetalheRef.current === versao) {
+      setDetalhe(dados)
     }
   }, [])
 
@@ -78,9 +101,10 @@ export default function CentralSuporteAdmin({ onVoltar }) {
       try {
         const lista = await api('/admin/suporte')
         if (ativo && Array.isArray(lista)) setChamados(lista)
-        if (selecionado) {
+        if (selecionado && !processandoRef.current && !carregandoDetalheRef.current) {
+          const versaoSincronizacao = ++versaoDetalheRef.current
           const dados = await api(`/admin/suporte/${selecionado}`)
-          if (ativo) setDetalhe(dados)
+          if (ativo && selecionadoRef.current === selecionado && versaoDetalheRef.current === versaoSincronizacao && !processandoRef.current && !carregandoDetalheRef.current) setDetalhe(dados)
         }
       } catch (_) { /* mantém os dados atuais */ }
       finally { ocupado = false }
@@ -96,33 +120,39 @@ export default function CentralSuporteAdmin({ onVoltar }) {
   async function responder(evento) {
     evento.preventDefault()
     const mensagem = resposta.trim()
-    if (!selecionado || !mensagem || processando) return
+    if (!selecionado || !detalhe || detalhe.id !== selecionado || detalhe.status === 'resolvido' || !mensagem || processando) return
+    processandoRef.current = true
     setProcessando(true)
     setErro('')
     setSucesso('')
     try {
       await api(`/admin/suporte/${selecionado}/respostas`, { method: 'POST', body: JSON.stringify({ mensagem }) })
       setResposta('')
-      await Promise.all([atualizarLista(), abrir(selecionado)])
+      await Promise.all([atualizarLista(), atualizarDetalhe(selecionado)])
       setSucesso('Resposta enviada e salva com sucesso.')
     } catch (e) { setErro(e.message) }
-    finally { setProcessando(false) }
+    finally { processandoRef.current = false; setProcessando(false) }
   }
 
   async function mudarStatus(status) {
     if (!selecionado || processando) return
+    processandoRef.current = true
     setProcessando(true)
     setErro('')
     setSucesso('')
     try {
       await api(`/admin/suporte/${selecionado}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
-      await Promise.all([atualizarLista(), abrir(selecionado)])
+      await Promise.all([atualizarLista(), atualizarDetalhe(selecionado)])
       setSucesso('Status atualizado com sucesso.')
     } catch (e) { setErro(e.message) }
-    finally { setProcessando(false) }
+    finally { processandoRef.current = false; setProcessando(false) }
   }
 
   function sairDaConversa() {
+    ++versaoDetalheRef.current
+    carregandoDetalheRef.current = false
+    setCarregandoDetalhe(false)
+    selecionadoRef.current = null
     setSelecionado(null)
     setDetalhe(null)
     setConfirmarEncerramento(false)
@@ -135,6 +165,7 @@ export default function CentralSuporteAdmin({ onVoltar }) {
     if (!selecionado || processando) return
     setConfirmarEncerramento(false)
     const id = selecionado
+    processandoRef.current = true
     setProcessando(true)
     setErro('')
     setSucesso('')
@@ -144,6 +175,10 @@ export default function CentralSuporteAdmin({ onVoltar }) {
         body: JSON.stringify({ status: 'resolvido' }),
       })
       await atualizarLista()
+      ++versaoDetalheRef.current
+      carregandoDetalheRef.current = false
+      setCarregandoDetalhe(false)
+      selecionadoRef.current = null
       setSelecionado(null)
       setDetalhe(null)
       setResposta('')
@@ -151,7 +186,7 @@ export default function CentralSuporteAdmin({ onVoltar }) {
     } catch (e) {
       setErro(e.message)
     } finally {
-      setProcessando(false)
+      processandoRef.current = false; setProcessando(false)
     }
   }
 
@@ -234,7 +269,7 @@ export default function CentralSuporteAdmin({ onVoltar }) {
           {carregando ? <p>Carregando chamados...</p> : filtrados.length === 0 ? <p>Nenhum chamado encontrado.</p> : (
             <div style={{ display: 'grid', gap: 10, maxHeight: 590, overflowY: 'auto' }}>
               {filtrados.map(c => (
-                <button key={c.id} type="button" onClick={() => abrir(c.id)} style={{ textAlign: 'left', cursor: 'pointer', padding: 14, borderRadius: 9, border: selecionado === c.id ? '2px solid #2563eb' : '1px solid #e2e8f0', background: selecionado === c.id ? '#eff6ff' : '#fff', color: '#1e293b' }}>
+                <button key={c.id} type="button" onClick={() => { if (!processando) abrir(c.id) }} disabled={processando} style={{ textAlign: 'left', cursor: 'pointer', padding: 14, borderRadius: 9, border: selecionado === c.id ? '2px solid #2563eb' : '1px solid #e2e8f0', background: selecionado === c.id ? '#eff6ff' : '#fff', color: '#1e293b' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}><strong>#{c.id} — {c.assunto}</strong><span style={{ color: cores[c.status] || '#64748b', fontWeight: 700 }}>{nomes[c.status] || c.status}</span></div>
                   <div style={{ marginTop: 6, fontSize: 14, color: '#475569' }}>{c.revendedora_nome} · {c.revendedora_email}</div>
                   <div style={{ marginTop: 5, fontSize: 12, color: '#64748b' }}>{c.categoria} · {dataHora(c.atualizado_em)}</div>
@@ -244,7 +279,7 @@ export default function CentralSuporteAdmin({ onVoltar }) {
           )}
         </div>
         <div style={painel}>
-          {!selecionado ? <p>Selecione um chamado para visualizar a conversa.</p> : !detalhe ? <p>Carregando atendimento...</p> : (
+          {!selecionado ? <p>Selecione um chamado para visualizar a conversa.</p> : !detalhe ? <p>{carregandoDetalhe ? "Carregando atendimento..." : "Não foi possível carregar o atendimento. Selecione o chamado novamente para tentar outra vez."}</p> : (
             <>
               <h2 style={{ margin: '0 0 8px', fontSize: 20 }}>#{detalhe.id} — {detalhe.assunto}</h2>
               <p style={{ color: '#64748b', marginTop: 0 }}>{detalhe.revendedora_nome} · {detalhe.revendedora_email}</p>
@@ -285,7 +320,7 @@ export default function CentralSuporteAdmin({ onVoltar }) {
                     </div>
                   ))}
                 </div>
-                <form onSubmit={responder} className="qa-chat-compose"><textarea aria-label="Responder revendedora" rows={2} maxLength={5000} required placeholder="Digite sua resposta..." value={resposta} disabled={processando} onChange={e => setResposta(e.target.value)} /><button type="submit" disabled={processando || !resposta.trim()} aria-label="Enviar resposta">➤</button></form>
+                <form onSubmit={responder} className="qa-chat-compose"><textarea aria-label="Responder revendedora" rows={2} maxLength={5000} required placeholder="Digite sua resposta..." value={resposta} disabled={processando || detalhe.status === 'resolvido'} onChange={e => setResposta(e.target.value)} /><button type="submit" disabled={processando || detalhe.status === 'resolvido' || !resposta.trim()} aria-label="Enviar resposta">➤</button></form>
               </div>
             </>
           )}

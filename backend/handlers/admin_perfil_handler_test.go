@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -202,6 +204,81 @@ func TestAdminFotoPerfilBloqueiaRevendedora(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("esperava 403, recebeu %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Ausencia de foto nao e falha de banco; falhas reais continuam retornando 500.
+func TestAdminFotoPerfilGETSemFotoOuFalha(t *testing.T) {
+	t.Setenv("QUITAIA_JWT_SECRET", chaveTesteFoto)
+	for _, caso := range []struct {
+		nome       string
+		dados      []byte
+		semUsuario bool
+		falha      bool
+		status     int
+	}{
+		{nome: "NULL", status: http.StatusNotFound},
+		{nome: "vazia", dados: []byte{}, status: http.StatusNotFound},
+		{nome: "usuario_ausente", semUsuario: true, status: http.StatusNotFound},
+		{nome: "falha_banco", falha: true, status: http.StatusInternalServerError},
+	} {
+		t.Run(caso.nome, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			consulta := mock.ExpectQuery("SELECT foto_perfil_dados").WithArgs(1)
+			if caso.falha {
+				consulta.WillReturnError(errors.New("falha de consulta simulada"))
+			} else {
+				rows := sqlmock.NewRows([]string{"foto_perfil_dados"})
+				if !caso.semUsuario {
+					if caso.dados == nil {
+						rows.AddRow(nil)
+					} else {
+						rows.AddRow(caso.dados)
+					}
+				}
+				consulta.WillReturnRows(rows)
+			}
+			handler := auth.AuthMiddleware(AdminFotoPerfil(db))
+			req := httptest.NewRequest(http.MethodGet, "/admin/perfil/foto", nil)
+			req.Header.Set("Authorization", "Bearer "+tokenTesteFoto(t, 1))
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != caso.status {
+				t.Fatalf("esperava %d, recebeu %d", caso.status, rec.Code)
+			}
+			if bytes.Contains(rec.Body.Bytes(), []byte("simulada")) {
+				t.Fatal("erro interno exposto na resposta")
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestAdminFotoPerfilGETCancelado(t *testing.T) {
+	t.Setenv("QUITAIA_JWT_SECRET", chaveTesteFoto)
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// O middleware valida o token, mas a consulta recebe o contexto ja cancelado.
+	ctx, cancelar := context.WithCancel(context.Background())
+	cancelar()
+	req := httptest.NewRequest(http.MethodGet, "/admin/perfil/foto", nil).WithContext(ctx)
+	req.Header.Set("Authorization", "Bearer "+tokenTesteFoto(t, 1))
+	rec := httptest.NewRecorder()
+	auth.AuthMiddleware(AdminFotoPerfil(db)).ServeHTTP(rec, req)
+	if rec.Code == http.StatusInternalServerError {
+		t.Fatal("cancelamento tratado como falha interna")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

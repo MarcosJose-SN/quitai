@@ -8,6 +8,7 @@ import (
 	"image"
 	_ "image/png"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/MarcosJose/quitai/auth"
@@ -42,6 +43,10 @@ func AdminFotoPerfil(db *sql.DB) http.HandlerFunc {
 			}
 
 			if err != nil {
+				if r.Context().Err() != nil {
+					return
+				}
+				log.Printf("Falha ao consultar foto administrativa (usuario_id=%d): %v", id, err)
 				http.Error(w, "Não foi possível consultar a foto", http.StatusInternalServerError)
 				return
 			}
@@ -98,6 +103,10 @@ func AdminFotoPerfil(db *sql.DB) http.HandlerFunc {
 			`, dados, id)
 
 			if err != nil {
+				if r.Context().Err() != nil {
+					return
+				}
+				log.Printf("Falha ao atualizar foto administrativa (usuario_id=%d): %v", id, err)
 				http.Error(w, "Não foi possível atualizar a foto", http.StatusInternalServerError)
 				return
 			}

@@ -75,7 +75,7 @@ function Login({ onLogin }) {
       }
 
       if (!dados.token || !dados.usuario) {
-        console.error('Resposta inesperada do login:', dados)
+        console.error('Resposta de login sem os campos obrigatorios.')
 
         setErro(
           'O servidor não retornou o token ou os dados do usuário.'

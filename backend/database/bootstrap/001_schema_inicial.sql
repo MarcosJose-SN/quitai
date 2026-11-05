@@ -20,7 +20,8 @@ CREATE TABLE usuarios (
         CONSTRAINT usuarios_perfil_check
         CHECK (perfil IN ('admin', 'revendedora')),
     ativo BOOLEAN NOT NULL DEFAULT TRUE,
-    foto_perfil_url TEXT
+    foto_perfil_url TEXT,
+    foto_perfil_dados BYTEA
 );
 
 CREATE UNIQUE INDEX idx_usuarios_email_lower
