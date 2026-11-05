@@ -304,7 +304,8 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 				v.total,
 				v.valor_pago,
 				v.saldo,
-				v.total_parcelas
+				v.total_parcelas,
+                (SELECT MIN(pa.vencimento)::text FROM parcelas pa WHERE pa.venda_id=v.id AND pa.valor_pago<pa.valor)
 			FROM vendas v
 			LEFT JOIN clientes c
 				ON c.id = v.cliente_id
@@ -322,6 +323,7 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 
 		for rows.Next() {
 			var venda models.Venda
+			var proximo sql.NullString
 			if err := rows.Scan(
 				&venda.ID,
 				&venda.ClienteID,
@@ -333,6 +335,7 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 				&venda.ValorPago,
 				&venda.Saldo,
 				&venda.TotalParcelas,
+				&proximo,
 			); err != nil {
 				http.Error(w, "Erro ao ler vendas", http.StatusInternalServerError)
 				return
@@ -343,7 +346,12 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 			}
 
 			venda.DataVencimento = venda.Vencimento
-			venda.Status = calcularStatusVenda(venda.Vencimento, venda.Saldo)
+			venda.ProximoVencimento = proximo.String
+			referencia := venda.Vencimento
+			if proximo.Valid {
+				referencia = proximo.String
+			}
+			venda.Status = calcularStatusVenda(referencia, venda.Saldo)
 			vendas = append(vendas, venda)
 		}
 
@@ -382,8 +390,15 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		leitura, err := db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+		if err != nil {
+			http.Error(w, "Nao foi possivel iniciar a consulta.", 500)
+			return
+		}
+		defer leitura.Rollback()
 		var venda models.Venda
-		err = db.QueryRow(`
+		var proximo sql.NullString
+		err = leitura.QueryRowContext(r.Context(), `
 			SELECT
 				v.id,
 				v.cliente_id,
@@ -394,7 +409,8 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 				v.total,
 				v.valor_pago,
 				v.saldo,
-				v.total_parcelas
+				v.total_parcelas,
+                (SELECT MIN(pa.vencimento)::text FROM parcelas pa WHERE pa.venda_id=v.id AND pa.valor_pago<pa.valor)
 			FROM vendas v
 			LEFT JOIN clientes c
 				ON c.id = v.cliente_id
@@ -412,6 +428,7 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			&venda.ValorPago,
 			&venda.Saldo,
 			&venda.TotalParcelas,
+			&proximo,
 		)
 
 		if err == sql.ErrNoRows {
@@ -427,10 +444,15 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			venda.TotalParcelas = 1
 		}
 		venda.DataVencimento = venda.Vencimento
-		venda.Status = calcularStatusVenda(venda.Vencimento, venda.Saldo)
+		venda.ProximoVencimento = proximo.String
+		referencia := venda.Vencimento
+		if proximo.Valid {
+			referencia = proximo.String
+		}
+		venda.Status = calcularStatusVenda(referencia, venda.Saldo)
 
 		// ITENS: a venda já foi validada como pertencente ao usuário.
-		rows, err := db.Query(`
+		rows, err := leitura.QueryContext(r.Context(), `
 			SELECT
 				vi.id,
 				vi.venda_id,
@@ -485,7 +507,7 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 		}
 
 		// PARCELAS
-		parcelasRows, err := db.Query(`
+		parcelasRows, err := leitura.QueryContext(r.Context(), `
 			SELECT
 				id,
 				venda_id,
@@ -545,6 +567,10 @@ func DetalharVenda(db *sql.DB) http.HandlerFunc {
 			"parcelas": parcelas,
 		}
 
+		if err = leitura.Commit(); err != nil {
+			http.Error(w, "Falha ao concluir consulta.", 500)
+			return
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resposta)
 	}

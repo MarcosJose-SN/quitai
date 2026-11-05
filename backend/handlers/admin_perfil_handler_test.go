@@ -74,6 +74,7 @@ func TestAdminFotoPerfilGET(t *testing.T) {
 				AddRow("admin", true),
 		)
 
+	mock.ExpectQuery("SELECT versao_sessao").WillReturnRows(sqlmock.NewRows([]string{"valida"}).AddRow(true))
 	mock.ExpectQuery("SELECT foto_perfil_dados").
 		WithArgs(1).
 		WillReturnRows(
@@ -120,6 +121,7 @@ func TestAdminFotoPerfilPOST(t *testing.T) {
 			sqlmock.NewRows([]string{"perfil", "ativo"}).
 				AddRow("admin", true),
 		)
+	mock.ExpectQuery("SELECT versao_sessao").WillReturnRows(sqlmock.NewRows([]string{"valida"}).AddRow(true))
 
 	mock.ExpectExec("UPDATE usuarios").
 		WithArgs(foto, 1).

@@ -1,3 +1,4 @@
+import { fetchAutenticado as fetch } from '../../services/sessaoRevendedora.js'
 import GestaoAvisosAdmin from './GestaoAvisosAdmin'
 import { conectarEventosSuporte } from '../../services/suporteEventos'
 import { useCallback, useEffect, useRef, useState } from 'react'

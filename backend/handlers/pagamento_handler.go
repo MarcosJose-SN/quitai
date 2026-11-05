@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -45,59 +47,85 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 		}
 
 		var pagamento Pagamento
-		if err := json.NewDecoder(r.Body).Decode(&pagamento); err != nil {
-			http.Error(w, "Dados inválidos", http.StatusBadRequest)
+		if err := lerPedidoFinanceiro(w, r, &pagamento); err != nil {
+			erroFinanceiro(w, 400, "Dados inválidos", "nao_confirmado")
 			return
 		}
 
-		if pagamento.VendaID <= 0 {
-			http.Error(w, "Venda inválida", http.StatusBadRequest)
+		if pagamento.VendaID <= 0 || int64(pagamento.VendaID) > 2147483647 {
+			erroFinanceiro(w, 400, "Venda inválida", "nao_confirmado")
 			return
 		}
-		if pagamento.ParcelaID <= 0 {
-			http.Error(w, "Parcela inválida", http.StatusBadRequest)
+		if pagamento.ParcelaID <= 0 || int64(pagamento.ParcelaID) > 2147483647 {
+			erroFinanceiro(w, 400, "Parcela inválida", "nao_confirmado")
 			return
 		}
-		if math.IsNaN(pagamento.Valor) || math.IsInf(pagamento.Valor, 0) || pagamento.Valor <= 0 || pagamento.Valor > 90000000000000 || math.Abs(pagamento.Valor*100-math.Round(pagamento.Valor*100)) > 0.000001 {
-			http.Error(w, "O valor do pagamento deve ser maior que zero", http.StatusBadRequest)
+		if math.IsNaN(pagamento.Valor) || math.IsInf(pagamento.Valor, 0) || pagamento.Valor <= 0 || pagamento.Valor > 99999999.99 || math.Abs(pagamento.Valor*100-math.Round(pagamento.Valor*100)) > 0.000001 {
+			erroFinanceiro(w, 400, "O valor do pagamento deve ser maior que zero", "nao_confirmado")
 			return
 		}
 
+		pagamento.ID = 0 // IDs de recebimento sao sempre definidos pelo servidor.
 		pagamento.FormaPagamento = strings.ToUpper(
 			strings.TrimSpace(pagamento.FormaPagamento),
 		)
 		if pagamento.FormaPagamento != "PIX" &&
 			pagamento.FormaPagamento != "ESPECIE" {
-			http.Error(w, "Forma de pagamento inválida. Use PIX ou ESPECIE", http.StatusBadRequest)
+			erroFinanceiro(w, 400, "Forma de pagamento inválida. Use PIX ou ESPECIE", "nao_confirmado")
 			return
 		}
 
 		pagamentoCentavos := arredondarCentavos(pagamento.Valor)
 		if pagamentoCentavos <= 0 {
-			http.Error(w, "O valor do pagamento deve ser maior que zero", http.StatusBadRequest)
+			erroFinanceiro(w, 400, "O valor do pagamento deve ser maior que zero", "nao_confirmado")
 			return
 		}
 
+		pagamento.Valor = centavosEmValor(pagamentoCentavos)
 		dataPagamento := time.Now().Format("2006-01-02")
 		if strings.TrimSpace(pagamento.DataPagamento) != "" {
 			data, err := time.Parse("2006-01-02", pagamento.DataPagamento)
 			if err != nil {
-				http.Error(w, "Data do pagamento inválida. Use AAAA-MM-DD", http.StatusBadRequest)
+				erroFinanceiro(w, 400, "Data do pagamento inválida. Use AAAA-MM-DD", "nao_confirmado")
 				return
 			}
 			dataPagamento = data.Format("2006-01-02")
 		}
 
-		tx, err := db.Begin()
+		chave, ok := chaveFinanceira(w, r)
+		if !ok {
+			return
+		}
+		ctx, cancelar := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancelar()
+		r = r.WithContext(ctx)
+		tx, err := db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 		if err != nil {
-			http.Error(w, "Erro ao iniciar pagamento", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 		defer tx.Rollback()
+		pedidoNormalizado := struct {
+			VendaID   int
+			ParcelaID int
+			Centavos  int64
+			Data      string
+			Forma     string
+		}{pagamento.VendaID, pagamento.ParcelaID, pagamentoCentavos, strings.TrimSpace(pagamento.DataPagamento), pagamento.FormaPagamento}
+		operacao, replay, err := reservarOperacao(tx, r, usuarioID, "pagamento", chave, hashPedidoFinanceiro(pedidoNormalizado))
+		if err != nil {
+			tratarReserva(w, err)
+			return
+		}
+		if replay != nil {
+			_ = tx.Rollback()
+			enviarResultadoFinanceiro(w, replay)
+			return
+		}
 
 		// Confirma a propriedade da venda e bloqueia sua alteração simultânea.
 		var vendaID int
-		err = tx.QueryRow(`
+		err = tx.QueryRowContext(r.Context(), `
 			SELECT id
 			FROM vendas
 			WHERE id = $1 AND usuario_id = $2
@@ -105,32 +133,32 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 		`, pagamento.VendaID, usuarioID).Scan(&vendaID)
 
 		if err == sql.ErrNoRows {
-			http.Error(w, "Venda não encontrada", http.StatusNotFound)
+			erroFinanceiro(w, 404, "Venda não encontrada", "nao_confirmado")
 			return
 		}
 		if err != nil {
-			http.Error(w, "Erro ao consultar venda", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 
 		// Confirma que a parcela pertence à venda autorizada.
 		var parcelaSelecionadaID int
-		err = tx.QueryRow(`
+		err = tx.QueryRowContext(r.Context(), `
 			SELECT id
 			FROM parcelas
 			WHERE id = $1 AND venda_id = $2
 		`, pagamento.ParcelaID, pagamento.VendaID).Scan(&parcelaSelecionadaID)
 
 		if err == sql.ErrNoRows {
-			http.Error(w, "Parcela não encontrada para esta venda", http.StatusNotFound)
+			erroFinanceiro(w, 404, "Parcela não encontrada para esta venda", "nao_confirmado")
 			return
 		}
 		if err != nil {
-			http.Error(w, "Erro ao consultar parcela", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 
-		rows, err := tx.Query(`
+		rows, err := tx.QueryContext(r.Context(), `
 			SELECT id, valor, valor_pago, vencimento, numero_parcela
 			FROM parcelas
 			WHERE venda_id = $1
@@ -139,7 +167,7 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 			FOR UPDATE
 		`, pagamento.VendaID)
 		if err != nil {
-			http.Error(w, "Erro ao consultar parcelas abertas", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 
@@ -166,7 +194,7 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 
 			if err := rows.Scan(&id, &valor, &valorPago, &vencimento, &numeroParcela); err != nil {
 				rows.Close()
-				http.Error(w, "Erro ao ler parcelas", http.StatusInternalServerError)
+				falhaFinanceira(w, err)
 				return
 			}
 
@@ -194,20 +222,20 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 
 		if err := rows.Err(); err != nil {
 			rows.Close()
-			http.Error(w, "Erro ao percorrer parcelas", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 		if err := rows.Close(); err != nil {
-			http.Error(w, "Erro ao finalizar consulta de parcelas", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 
 		if saldoTotalVendaCentavos <= 0 {
-			http.Error(w, "Esta venda já está quitada", http.StatusBadRequest)
+			erroFinanceiro(w, 400, "Esta venda já está quitada", "nao_confirmado")
 			return
 		}
 		if pagamentoCentavos > saldoTotalVendaCentavos {
-			http.Error(w, "O valor do pagamento não pode ser maior que o saldo total da venda", http.StatusBadRequest)
+			erroFinanceiro(w, 400, "O valor do pagamento não pode ser maior que o saldo total da venda", "nao_confirmado")
 			return
 		}
 
@@ -243,19 +271,19 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 				novoStatusParcela = "QUITADO"
 			}
 
-			_, err = tx.Exec(`
+			_, err = tx.ExecContext(r.Context(), `
 				UPDATE parcelas
 				SET valor_pago = $1, status = $2
 				WHERE id = $3 AND venda_id = $4
 			`, novoValorPago, novoStatusParcela, parcela.ID, pagamento.VendaID)
 			if err != nil {
-				http.Error(w, "Erro ao atualizar parcela", http.StatusInternalServerError)
+				falhaFinanceira(w, err)
 				return
 			}
 
 			valorDistribuido := float64(valorDistribuidoCentavos) / 100
 			var pagamentoID int
-			err = tx.QueryRow(`
+			err = tx.QueryRowContext(r.Context(), `
 				INSERT INTO pagamentos (
 					venda_id, parcela_id, valor, data_pagamento, forma_pagamento
 				)
@@ -264,7 +292,7 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 			`, pagamento.VendaID, parcela.ID, valorDistribuido, dataPagamento,
 				pagamento.FormaPagamento).Scan(&pagamentoID)
 			if err != nil {
-				http.Error(w, "Erro ao registrar pagamento", http.StatusInternalServerError)
+				falhaFinanceira(w, err)
 				return
 			}
 
@@ -280,18 +308,18 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 		}
 
 		if restantePagamentoCentavos > 0 {
-			http.Error(w, "Não foi possível distribuir todo o pagamento", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 
 		var totalVenda, valorPagoVenda float64
-		err = tx.QueryRow(`
+		err = tx.QueryRowContext(r.Context(), `
 			SELECT COALESCE(SUM(valor), 0), COALESCE(SUM(valor_pago), 0)
 			FROM parcelas
 			WHERE venda_id = $1
 		`, pagamento.VendaID).Scan(&totalVenda, &valorPagoVenda)
 		if err != nil {
-			http.Error(w, "Não foi possível recalcular os valores da venda", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 
@@ -307,7 +335,7 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 		novoSaldoVenda := float64(novoSaldoVendaCentavos) / 100
 
 		var proximoVencimento time.Time
-		err = tx.QueryRow(`
+		err = tx.QueryRowContext(r.Context(), `
 			SELECT vencimento
 			FROM parcelas
 			WHERE venda_id = $1 AND valor_pago < valor
@@ -317,7 +345,7 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 
 		encontrouParcela := err == nil
 		if err != nil && err != sql.ErrNoRows {
-			http.Error(w, "Não foi possível calcular o status da venda", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 
@@ -329,19 +357,14 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 			)
 		}
 
-		_, err = tx.Exec(`
+		_, err = tx.ExecContext(r.Context(), `
 			UPDATE vendas
 			SET total = $1, valor_pago = $2, saldo = $3, status = $4
 			WHERE id = $5 AND usuario_id = $6
 		`, totalVenda, valorPagoVenda, novoSaldoVenda, statusVenda,
 			pagamento.VendaID, usuarioID)
 		if err != nil {
-			http.Error(w, "Não foi possível atualizar a venda", http.StatusInternalServerError)
-			return
-		}
-
-		if err := tx.Commit(); err != nil {
-			http.Error(w, "Erro ao confirmar pagamento", http.StatusInternalServerError)
+			falhaFinanceira(w, err)
 			return
 		}
 
@@ -358,9 +381,28 @@ func RegistrarPagamento(db *sql.DB) http.HandlerFunc {
 			"distribuicoes":    distribuicoes,
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(resposta)
+		var consistente bool
+		err = tx.QueryRowContext(r.Context(), `SELECT
+          v.total=COALESCE((SELECT sum(subtotal) FROM venda_itens WHERE venda_id=v.id),0)
+          AND v.total=COALESCE((SELECT sum(valor) FROM parcelas WHERE venda_id=v.id),0)
+          AND v.valor_pago=COALESCE((SELECT sum(valor_pago) FROM parcelas WHERE venda_id=v.id),0)
+          AND v.valor_pago=COALESCE((SELECT sum(valor) FROM pagamentos WHERE venda_id=v.id),0)
+          AND v.saldo=v.total-v.valor_pago
+          FROM vendas v WHERE v.id=$1 AND v.usuario_id=$2`, pagamento.VendaID, usuarioID).Scan(&consistente)
+		if err != nil {
+			falhaFinanceira(w, err)
+			return
+		}
+		if !consistente {
+			falhaFinanceira(w, fmt.Errorf("somas financeiras divergentes"))
+			return
+		}
+		resultado, err := confirmarOperacao(tx, r, operacao, 201, resposta)
+		if err != nil {
+			falhaFinanceira(w, err)
+			return
+		}
+		enviarResultadoFinanceiro(w, resultado)
 	}
 }
 

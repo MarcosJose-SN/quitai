@@ -30,9 +30,11 @@ func TestDetalharVendaNaoPermiteAcessoDeOutroUsuario(t *testing.T) {
 	}
 	defer db.Close()
 
+	mock.ExpectBegin()
 	mock.ExpectQuery("FROM vendas v").
 		WithArgs(9, 2).
 		WillReturnError(sql.ErrNoRows)
+	mock.ExpectRollback()
 
 	agora := time.Now()
 	claims := auth.Claims{

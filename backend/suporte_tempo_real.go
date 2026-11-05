@@ -147,7 +147,7 @@ func destinatarioNotificacaoSuporte(db *sql.DB, r *http.Request) (int, error) {
 
 
 func sessaoSSEAtiva(db *sql.DB, r *http.Request, tipo string, usuarioID int) bool {
-    if tipo != "sistema" && !auth.TokenAindaValido(r) { return false }
+    if tipo != "sistema" && !auth.SessaoPersistenteValida(db,r) { return false }
     if tipo == "revendedora" {
         ativo, _, err := estadoManutencao(db)
         if err != nil || ativo { return false }

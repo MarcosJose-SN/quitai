@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"github.com/MarcosJose/quitai/auth"
 	"net/http"
 	"strconv"
 	"strings"
@@ -97,7 +98,7 @@ func listarContasAdmin(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 func criarContaAdmin(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	var req criarContaAdminRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16*1024)).Decode(&req); err != nil {
 		responderAdminJSON(w, http.StatusBadRequest, map[string]string{
 			"mensagem": "Dados inválidos.",
 		})
@@ -107,9 +108,9 @@ func criarContaAdmin(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	req.Nome = strings.TrimSpace(req.Nome)
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 
-	if req.Nome == "" || req.Email == "" || len(req.Senha) < 6 {
+	if len([]rune(req.Nome)) < 2 || len([]rune(req.Nome)) > 120 || !auth.EmailValido(req.Email) || !auth.SenhaValida(req.Senha) {
 		responderAdminJSON(w, http.StatusBadRequest, map[string]string{
-			"mensagem": "Informe nome, e-mail e uma senha com pelo menos 6 caracteres.",
+			"mensagem": "Informe nome, e-mail e uma senha com 8 a 72 bytes.",
 		})
 		return
 	}

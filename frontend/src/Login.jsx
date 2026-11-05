@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import './Login.css'
 import logoQuitaAi from './assets/quitai-logo.svg'
 
 function Login({ onLogin }) {
+  const processandoRef = useRef(false)
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [mostrarSenha, setMostrarSenha] = useState(false)
@@ -39,6 +40,8 @@ function Login({ onLogin }) {
       return
     }
 
+    if (processandoRef.current) return
+    processandoRef.current = true
     try {
       setCarregando(true)
 
@@ -91,6 +94,7 @@ function Login({ onLogin }) {
         'Não foi possível conectar ao servidor. Verifique se o backend está funcionando na porta 8082.'
       )
     } finally {
+      processandoRef.current = false
       setCarregando(false)
     }
   }
@@ -103,6 +107,8 @@ function Login({ onLogin }) {
       setErro('Informe seu e-mail no campo acima para receber o código.')
       return
     }
+    if (processandoRef.current) return
+    processandoRef.current = true
     try {
       setCarregando(true)
       const resposta = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/auth/recuperar-senha`, {
@@ -118,6 +124,7 @@ function Login({ onLogin }) {
     } catch (error) {
       setErro(error.message || 'Não foi possível solicitar a recuperação.')
     } finally {
+      processandoRef.current = false
       setCarregando(false)
     }
   }
@@ -126,14 +133,16 @@ function Login({ onLogin }) {
     event.preventDefault()
     setErro('')
     setMensagem('')
-    if (novaSenha.length < 6) {
-      setErro('A nova senha deve ter pelo menos 6 caracteres.')
+    if (new TextEncoder().encode(novaSenha).length < 8 || new TextEncoder().encode(novaSenha).length > 72) {
+      setErro('A nova senha deve ter entre 8 e 72 bytes.')
       return
     }
     if (novaSenha !== confirmarSenha) {
       setErro('As senhas não são iguais.')
       return
     }
+    if (processandoRef.current) return
+    processandoRef.current = true
     try {
       setCarregando(true)
       const resposta = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/auth/redefinir-senha`, {
@@ -157,6 +166,7 @@ function Login({ onLogin }) {
     } catch (error) {
       setErro(error.message || 'Não foi possível redefinir a senha.')
     } finally {
+      processandoRef.current = false
       setCarregando(false)
     }
   }
@@ -386,11 +396,11 @@ function Login({ onLogin }) {
                 </div>
                 <div className="login-grupo">
                   <label htmlFor="nova-senha">Nova senha</label>
-                  <input id="nova-senha" type="password" autoComplete="new-password" minLength={6} value={novaSenha} onChange={(event) => setNovaSenha(event.target.value)} required />
+                  <input id="nova-senha" type="password" autoComplete="new-password" minLength={8} value={novaSenha} onChange={(event) => setNovaSenha(event.target.value)} required />
                 </div>
                 <div className="login-grupo">
                   <label htmlFor="confirmar-senha">Confirmar nova senha</label>
-                  <input id="confirmar-senha" type="password" autoComplete="new-password" minLength={6} value={confirmarSenha} onChange={(event) => setConfirmarSenha(event.target.value)} required />
+                  <input id="confirmar-senha" type="password" autoComplete="new-password" minLength={8} value={confirmarSenha} onChange={(event) => setConfirmarSenha(event.target.value)} required />
                 </div>
                 {erro && <div className="login-erro" role="alert">{erro}</div>}
                 <button type="submit" className="login-botao-entrar" disabled={carregando}>

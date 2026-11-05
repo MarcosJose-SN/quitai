@@ -1,3 +1,5 @@
+import { encerrarSessaoServidor, exigirNovoLogin } from '../services/sessaoRevendedora.js'
+import { fetchAutenticado as fetch } from '../services/sessaoRevendedora.js'
 
 import { useEffect, useRef, useState } from 'react'
 import AdminLayout from './AdminLayout'
@@ -47,8 +49,8 @@ function CadastroRevendedora({ onVoltar }) {
     setMensagem('')
     setErroCadastro('')
 
-    if (!nome.trim() || !email.trim() || senha.length < 6) {
-      setErroCadastro('Preencha nome, e-mail e senha de pelo menos 6 caracteres.')
+    if (!nome.trim() || !email.trim() || new TextEncoder().encode(senha).length < 8 || new TextEncoder().encode(senha).length > 72) {
+      setErroCadastro('Preencha nome, e-mail e senha de 8 a 72 bytes.')
       return
     }
     if (senha !== confirmacao) {
@@ -109,11 +111,11 @@ function CadastroRevendedora({ onVoltar }) {
         </label>
         <label style={rotulo}>Senha (mínimo de 6 caracteres)
           <input style={campo} type="password" value={senha} onChange={e => setSenha(e.target.value)}
-            autoComplete="new-password" required minLength={6} disabled={salvando} />
+            autoComplete="new-password" required minLength={8} disabled={salvando} />
         </label>
         <label style={rotulo}>Confirmar senha
           <input style={campo} type="password" value={confirmacao} onChange={e => setConfirmacao(e.target.value)}
-            autoComplete="new-password" required minLength={6} disabled={salvando} />
+            autoComplete="new-password" required minLength={8} disabled={salvando} />
         </label>
         {erroCadastro && <Aviso tipo="erro">{erroCadastro}</Aviso>}
         {mensagem && <Aviso tipo="sucesso">{mensagem}</Aviso>}
@@ -301,6 +303,9 @@ function MinhaConta({ usuario, onVoltar, onUsuarioAtualizado }) {
   const [erroFoto, setErroFoto] = useState('')
   const [nomeEditado, setNomeEditado] = useState(usuario?.nome || '')
   const [emailEditado, setEmailEditado] = useState(usuario?.email || '')
+  const [senhaEmail, setSenhaEmail] = useState('')
+  const [codigoEmail, setCodigoEmail] = useState('')
+  const [emailPendente, setEmailPendente] = useState(false)
   const [salvandoDados, setSalvandoDados] = useState(false)
   const [mensagemDados, setMensagemDados] = useState('')
   const [erroDados, setErroDados] = useState('')
@@ -332,10 +337,13 @@ function MinhaConta({ usuario, onVoltar, onUsuarioAtualizado }) {
       const resposta = await fetch(`${API_URL}/admin/minha-conta`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${obterToken()}` },
-        body: JSON.stringify({ nome: nomeLimpo, email: emailLimpo }),
+        body: JSON.stringify({ nome: nomeLimpo, email: emailLimpo, senha_atual: senhaEmail, codigo_email: codigoEmail }),
       })
       const dados = await resposta.json().catch(() => ({}))
       if (!resposta.ok) throw new Error(dados.mensagem || 'Não foi possível atualizar os dados.')
+      if (resposta.status === 202) { setEmailPendente(true); setMensagemDados(dados.mensagem); return }
+      if (dados.codigo === 'reautenticar') { exigirNovoLogin(); return }
+      setSenhaEmail(''); setCodigoEmail(''); setEmailPendente(false)
       onUsuarioAtualizado(dados)
       setMensagemDados('Nome e e-mail atualizados com sucesso.')
       setSecaoEdicao(null)
@@ -367,6 +375,7 @@ function MinhaConta({ usuario, onVoltar, onUsuarioAtualizado }) {
       })
       const dados = await resposta.json().catch(() => ({}))
       if (!resposta.ok) throw new Error(dados.mensagem || 'Não foi possível alterar a senha.')
+      exigirNovoLogin()
       setSenhaAtual('')
       setNovaSenha('')
       setConfirmarSenha('')
@@ -489,6 +498,11 @@ function MinhaConta({ usuario, onVoltar, onUsuarioAtualizado }) {
           <h3 style={{ margin: '0 0 6px', color: '#1e293b', fontSize: 19 }}>Editar informações</h3>
           <p style={{ margin: '0 0 18px', color: '#64748b' }}>Atualize o nome e o e-mail usados na sua conta.</p>
           <form onSubmit={salvarDados} style={{ display: 'grid', gap: 14 }}>
+            {emailEditado.trim().toLowerCase() !== usuario?.email?.toLowerCase() && <>
+              <label>Senha atual<input type="password" autoComplete="current-password" required value={senhaEmail} onChange={e => setSenhaEmail(e.target.value)} /></label>
+              <label>Codigo enviado ao novo e-mail<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={codigoEmail} onChange={e => setCodigoEmail(e.target.value.replace(/\D/g, '').slice(0, 6))} /></label>
+              <p>O e-mail atual sera preservado ate a confirmacao. {emailPendente ? mensagemDados : 'Salve para solicitar o codigo; depois informe-o e salve novamente.'}</p>
+            </>}
             <label style={{ display: 'grid', gap: 7, fontWeight: 600, color: '#334155' }}>
               Nome completo
               <input type="text" autoComplete="name" maxLength={120} required minLength={2}
@@ -540,6 +554,13 @@ function MinhaConta({ usuario, onVoltar, onUsuarioAtualizado }) {
 }
 
 export default function AdminApp() {
+  useEffect(() => {
+    const encerrar = () => { setUsuario(null); setEstado('sem-sessao'); window.location.replace('/') }
+    const sincronizar = e => { if (e.key === 'quitai_token' || e.key === 'quitai_usuario' || e.key === null) encerrar() }
+    window.addEventListener('quitai:sessao-encerrada', encerrar)
+    window.addEventListener('storage', sincronizar)
+    return () => { window.removeEventListener('quitai:sessao-encerrada', encerrar); window.removeEventListener('storage', sincronizar) }
+  }, [])
   const [paginaAtual, setPaginaAtual] = useState('inicio')
   const [estado, setEstado] = useState('validando')
   const [usuario, setUsuario] = useState(null)
@@ -605,9 +626,9 @@ export default function AdminApp() {
     }
   }, [])
 
-  function sair() {
-    limparSessao()
-    window.location.replace('/')
+  async function sair() {
+    try { await encerrarSessaoServidor(API_URL) }
+    catch (erro) { window.alert(erro.message || 'Nao foi possivel encerrar a sessao.') }
   }
 
   function navegar(pagina) {

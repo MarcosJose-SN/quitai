@@ -1,3 +1,4 @@
+import { fetchAutenticado as fetch } from '../../services/sessaoRevendedora.js'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8082'

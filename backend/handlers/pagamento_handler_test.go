@@ -32,6 +32,7 @@ func TestRegistrarPagamentoNaoPermiteVendaDeOutroUsuario(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectBegin()
+	mock.ExpectQuery("INSERT INTO operacoes_financeiras").WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
 	mock.ExpectQuery("SELECT id FROM vendas").
 		WithArgs(9, 2).
 		WillReturnError(sql.ErrNoRows)
@@ -58,6 +59,7 @@ func TestRegistrarPagamentoNaoPermiteVendaDeOutroUsuario(t *testing.T) {
 	body := `{"venda_id":9,"parcela_id":1,"valor":10,"forma_pagamento":"PIX"}`
 	req := httptest.NewRequest(http.MethodPost, "/pagamentos", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Idempotency-Key", "teste-pagamento-chave-001")
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	rec := httptest.NewRecorder()

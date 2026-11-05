@@ -108,10 +108,16 @@ func AdminRelatorios(db *sql.DB) http.HandlerFunc {
 		if fim != nil {
 			df = *fim
 		}
+		leitura, err := db.BeginTx(r.Context(), &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+		if err != nil {
+			http.Error(w, "Nao foi possivel iniciar o relatorio.", 500)
+			return
+		}
+		defer leitura.Rollback()
 		ctx := r.Context()
 		resp := Resposta{Revendedoras: []Revendedora{}, Produtos: []Produto{}, Clientes: []Cliente{}}
 		// Contagens de cadastros: estado atual, sem recorte por data.
-		err = db.QueryRowContext(ctx, `SELECT
+		err = leitura.QueryRowContext(ctx, `SELECT
    (SELECT COUNT(*) FROM usuarios WHERE perfil='revendedora' AND ($1::bigint=0 OR id=$1)),
    (SELECT COUNT(*) FROM clientes WHERE ($1::bigint=0 OR usuario_id=$1) AND usuario_id IN (SELECT id FROM usuarios WHERE perfil='revendedora')),
    (SELECT COUNT(*) FROM produtos WHERE ($1::bigint=0 OR usuario_id=$1) AND usuario_id IN (SELECT id FROM usuarios WHERE perfil='revendedora'))`, id).Scan(&resp.Resumo.Revendedoras, &resp.Resumo.Clientes, &resp.Resumo.Produtos)
@@ -120,33 +126,33 @@ func AdminRelatorios(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		// Totais de vendas, sem JOIN com itens ou pagamentos (evita multiplicação de valores).
-		err = db.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(v.total),0),COALESCE(SUM(v.saldo),0)
+		err = leitura.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(SUM(v.total),0),COALESCE(SUM(v.saldo),0)
    FROM vendas v JOIN usuarios u ON u.id=v.usuario_id AND u.perfil='revendedora'
    WHERE ($1::bigint=0 OR v.usuario_id=$1) AND ($2::date IS NULL OR v.data_compra >= $2::date) AND ($3::date IS NULL OR v.data_compra <= $3::date)`, id, di, df).Scan(&resp.Resumo.Vendas, &resp.Resumo.TotalVendido, &resp.Resumo.SaldoVendas)
 		if err != nil {
 			http.Error(w, `{"mensagem":"Erro ao consultar vendas"}`, 500)
 			return
 		}
-		err = db.QueryRowContext(ctx, `SELECT COALESCE(SUM(p.valor),0) FROM pagamentos p JOIN vendas v ON v.id=p.venda_id JOIN usuarios u ON u.id=v.usuario_id AND u.perfil='revendedora'
+		err = leitura.QueryRowContext(ctx, `SELECT COALESCE(SUM(p.valor),0) FROM pagamentos p JOIN vendas v ON v.id=p.venda_id JOIN usuarios u ON u.id=v.usuario_id AND u.perfil='revendedora'
    WHERE ($1::bigint=0 OR v.usuario_id=$1) AND ($2::date IS NULL OR p.data_pagamento >= $2::date) AND ($3::date IS NULL OR p.data_pagamento <= $3::date)`, id, di, df).Scan(&resp.Resumo.TotalRecebido)
 		if err != nil {
 			http.Error(w, `{"mensagem":"Erro ao consultar pagamentos"}`, 500)
 			return
 		}
-		err = db.QueryRowContext(ctx, `SELECT COALESCE(SUM(vi.quantidade),0) FROM venda_itens vi JOIN vendas v ON v.id=vi.venda_id JOIN usuarios u ON u.id=v.usuario_id AND u.perfil='revendedora'
+		err = leitura.QueryRowContext(ctx, `SELECT COALESCE(SUM(vi.quantidade),0) FROM venda_itens vi JOIN vendas v ON v.id=vi.venda_id JOIN usuarios u ON u.id=v.usuario_id AND u.perfil='revendedora'
    WHERE ($1::bigint=0 OR v.usuario_id=$1) AND ($2::date IS NULL OR v.data_compra >= $2::date) AND ($3::date IS NULL OR v.data_compra <= $3::date)`, id, di, df).Scan(&resp.Resumo.UnidadesVendidas)
 		if err != nil {
 			http.Error(w, `{"mensagem":"Erro ao consultar itens vendidos"}`, 500)
 			return
 		}
-		err = db.QueryRowContext(ctx, `SELECT COUNT(*) FROM parcelas pa JOIN vendas v ON v.id=pa.venda_id JOIN usuarios u ON u.id=v.usuario_id AND u.perfil='revendedora'
+		err = leitura.QueryRowContext(ctx, `SELECT COUNT(*) FROM parcelas pa JOIN vendas v ON v.id=pa.venda_id JOIN usuarios u ON u.id=v.usuario_id AND u.perfil='revendedora'
    WHERE ($1::bigint=0 OR v.usuario_id=$1) AND pa.vencimento<CURRENT_DATE AND pa.valor_pago<pa.valor
    AND ($2::date IS NULL OR pa.vencimento >= $2::date) AND ($3::date IS NULL OR pa.vencimento <= $3::date)`, id, di, df).Scan(&resp.Resumo.ParcelasVencidas)
 		if err != nil {
 			http.Error(w, `{"mensagem":"Erro ao consultar parcelas"}`, 500)
 			return
 		}
-		rows, err := db.QueryContext(ctx, `SELECT u.id,u.nome,u.email,u.ativo,
+		rows, err := leitura.QueryContext(ctx, `SELECT u.id,u.nome,u.email,u.ativo,
    (SELECT COUNT(*) FROM clientes c WHERE c.usuario_id=u.id),
    (SELECT COUNT(*) FROM produtos p WHERE p.usuario_id=u.id),
    (SELECT COUNT(*) FROM vendas v WHERE v.usuario_id=u.id AND ($2::date IS NULL OR v.data_compra >= $2::date) AND ($3::date IS NULL OR v.data_compra <= $3::date)),
@@ -172,7 +178,7 @@ func AdminRelatorios(db *sql.DB) http.HandlerFunc {
 			http.Error(w, `{"mensagem":"Erro ao ler revendedoras"}`, 500)
 			return
 		}
-		rows, err = db.QueryContext(ctx, `SELECT p.id,p.usuario_id,p.nome,p.codigo,p.estoque,
+		rows, err = leitura.QueryContext(ctx, `SELECT p.id,p.usuario_id,p.nome,p.codigo,p.estoque,
    COALESCE(SUM(vi.quantidade) FILTER (WHERE ($2::date IS NULL OR v.data_compra >= $2::date) AND ($3::date IS NULL OR v.data_compra <= $3::date)),0),
    COALESCE(SUM(vi.subtotal) FILTER (WHERE ($2::date IS NULL OR v.data_compra >= $2::date) AND ($3::date IS NULL OR v.data_compra <= $3::date)),0)
    FROM produtos p JOIN usuarios u ON u.id=p.usuario_id AND u.perfil='revendedora'
@@ -198,7 +204,7 @@ func AdminRelatorios(db *sql.DB) http.HandlerFunc {
 			http.Error(w, `{"mensagem":"Erro ao ler produtos"}`, 500)
 			return
 		}
-		rows, err = db.QueryContext(ctx, `SELECT c.id,c.usuario_id,c.nome,COUNT(v.id),COALESCE(SUM(v.total),0)
+		rows, err = leitura.QueryContext(ctx, `SELECT c.id,c.usuario_id,c.nome,COUNT(v.id),COALESCE(SUM(v.total),0)
    FROM clientes c JOIN usuarios u ON u.id=c.usuario_id AND u.perfil='revendedora'
    LEFT JOIN vendas v ON v.cliente_id=c.id AND v.usuario_id=c.usuario_id
     AND ($2::date IS NULL OR v.data_compra >= $2::date) AND ($3::date IS NULL OR v.data_compra <= $3::date)
@@ -221,6 +227,10 @@ func AdminRelatorios(db *sql.DB) http.HandlerFunc {
 		rows.Close()
 		if err != nil {
 			http.Error(w, `{"mensagem":"Erro ao ler clientes"}`, 500)
+			return
+		}
+		if err = leitura.Commit(); err != nil {
+			http.Error(w, "Falha ao concluir relatorio.", 500)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(resp)

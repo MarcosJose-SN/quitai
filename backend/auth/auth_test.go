@@ -145,6 +145,7 @@ func TestAdminMiddlewarePermiteAdministradorAtivo(t *testing.T) {
 				AddRow("admin", true),
 		)
 
+	mock.ExpectQuery("SELECT versao_sessao").WillReturnRows(sqlmock.NewRows([]string{"valida"}).AddRow(true))
 	proximo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -180,18 +181,21 @@ func TestLoginComSenhaCorreta(t *testing.T) {
 		t.Fatalf("erro ao gerar hash: %v", err)
 	}
 
+	for range 2 {
+		mock.ExpectQuery("INSERT INTO limites_autenticacao").WillReturnRows(sqlmock.NewRows([]string{"tentativas"}).AddRow(1))
+	}
 	mock.ExpectQuery("SELECT id, nome, email, senha_hash, perfil, ativo").
 		WithArgs("teste@exemplo.com").
 		WillReturnRows(
 			sqlmock.NewRows([]string{
-				"id", "nome", "email", "senha_hash", "perfil", "ativo",
+				"id", "nome", "email", "senha_hash", "perfil", "ativo", "versao_sessao",
 			}).AddRow(
 				1,
 				"Usuário Teste",
 				"teste@exemplo.com",
 				string(hash),
 				"revendedora",
-				true,
+				true, 0,
 			),
 		)
 
@@ -244,18 +248,21 @@ func TestLoginComSenhaIncorreta(t *testing.T) {
 		t.Fatalf("erro ao gerar hash: %v", err)
 	}
 
+	for range 2 {
+		mock.ExpectQuery("INSERT INTO limites_autenticacao").WillReturnRows(sqlmock.NewRows([]string{"tentativas"}).AddRow(1))
+	}
 	mock.ExpectQuery("SELECT id, nome, email, senha_hash, perfil, ativo").
 		WithArgs("teste@exemplo.com").
 		WillReturnRows(
 			sqlmock.NewRows([]string{
-				"id", "nome", "email", "senha_hash", "perfil", "ativo",
+				"id", "nome", "email", "senha_hash", "perfil", "ativo", "versao_sessao",
 			}).AddRow(
 				1,
 				"Usuário Teste",
 				"teste@exemplo.com",
 				string(hash),
 				"revendedora",
-				true,
+				true, 0,
 			),
 		)
 
@@ -308,18 +315,21 @@ func TestLoginRejeitaContaBloqueada(t *testing.T) {
 		t.Fatalf("erro ao gerar hash: %v", err)
 	}
 
+	for range 2 {
+		mock.ExpectQuery("INSERT INTO limites_autenticacao").WillReturnRows(sqlmock.NewRows([]string{"tentativas"}).AddRow(1))
+	}
 	mock.ExpectQuery("SELECT id, nome, email, senha_hash, perfil, ativo").
 		WithArgs("bloqueada@teste.local").
 		WillReturnRows(
 			sqlmock.NewRows([]string{
-				"id", "nome", "email", "senha_hash", "perfil", "ativo",
+				"id", "nome", "email", "senha_hash", "perfil", "ativo", "versao_sessao",
 			}).AddRow(
 				2,
 				"Conta Bloqueada",
 				"bloqueada@teste.local",
 				string(hash),
 				"revendedora",
-				false,
+				false, 0,
 			),
 		)
 
@@ -347,6 +357,9 @@ func TestLoginRejeitaEmailInexistente(t *testing.T) {
 	}
 	defer db.Close()
 
+	for range 2 {
+		mock.ExpectQuery("INSERT INTO limites_autenticacao").WillReturnRows(sqlmock.NewRows([]string{"tentativas"}).AddRow(1))
+	}
 	mock.ExpectQuery("SELECT id, nome, email, senha_hash, perfil, ativo").
 		WithArgs("inexistente@teste.local").
 		WillReturnError(sql.ErrNoRows)

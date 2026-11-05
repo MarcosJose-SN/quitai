@@ -1,3 +1,4 @@
+import { fetchAutenticado, obterToken } from './sessaoRevendedora.js'
 // SSE autenticado com fetch (EventSource nativo não envia header Authorization).
 // Retorna uma função para encerrar a conexão e o temporizador de reconexão.
 export function conectarEventosSuporte(caminho, atualizar) {
@@ -13,7 +14,7 @@ export function conectarEventosSuporte(caminho, atualizar) {
     if (encerrado) return
     try {
       const token = localStorage.getItem('quitai_token') || sessionStorage.getItem('quitai_token')
-      const resposta = await fetch(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}${caminho}`, {
+      const resposta = await fetchAutenticado(`${import.meta.env?.VITE_API_URL || "http://localhost:8082"}${caminho}`, {
         headers: { Authorization: `Bearer ${token}`, Accept: 'text/event-stream' },
         signal: controlador.signal,
         cache: 'no-store',
@@ -35,6 +36,7 @@ export function conectarEventosSuporte(caminho, atualizar) {
         }
       }
     } catch (erro) {
+      if (!obterToken()) encerrado = true
       if (encerrado || erro.name === 'AbortError') return
     }
     if (!encerrado) reconectar = setTimeout(conectar, 1500)

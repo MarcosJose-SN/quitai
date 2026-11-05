@@ -43,8 +43,9 @@ type authResponse struct {
 }
 
 type Claims struct {
-	UsuarioID int    `json:"usuario_id"`
-	Email     string `json:"email"`
+	VersaoSessao int64  `json:"versao_sessao"`
+	UsuarioID    int    `json:"usuario_id"`
+	Email        string `json:"email"`
 	jwt.RegisteredClaims
 }
 
@@ -72,18 +73,33 @@ func Login(db *sql.DB) http.HandlerFunc {
 		}
 
 		var req loginRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err := lerJSON(w, r, &req); err != nil {
 			responderErro(w, http.StatusBadRequest, "Dados inválidos.")
 			return
 		}
 
 		req.Email = normalizarEmail(req.Email)
+		if len(req.Email) > 254 || len(req.Senha) > 72 {
+			responderErro(w, 400, "Dados invalidos.")
+			return
+		}
+		if !limitar(db, w, r, "login", req.Email) {
+			return
+		}
+		if !ocuparSenha() {
+			responderErro(w, 503, "Tente novamente em instantes.")
+			return
+		}
+		defer liberarSenha()
 
 		var usuario UsuarioResponse
 		var senhaHash string
+		var versao int64
 
-		err := db.QueryRow(`
-			SELECT id, nome, email, senha_hash, perfil, ativo
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		err := db.QueryRowContext(ctx, `
+			SELECT id, nome, email, senha_hash, perfil, ativo, versao_sessao
 			FROM usuarios
 			WHERE LOWER(email) = LOWER($1)
 		`, req.Email).Scan(
@@ -92,10 +108,11 @@ func Login(db *sql.DB) http.HandlerFunc {
 			&usuario.Email,
 			&senhaHash,
 			&usuario.Perfil,
-			&usuario.Ativo,
+			&usuario.Ativo, &versao,
 		)
 
 		if err == sql.ErrNoRows {
+			_ = bcrypt.CompareHashAndPassword([]byte(hashFicticio), []byte(req.Senha))
 			responderErro(w, http.StatusUnauthorized, "E-mail ou senha inválidos.")
 			return
 		}
@@ -115,7 +132,7 @@ func Login(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		token, err := gerarToken(usuario)
+		token, err := tokenComVersao(usuario, versao)
 		if err != nil {
 			responderErro(w, http.StatusInternalServerError, "Não foi possível iniciar a sessão.")
 			return
@@ -137,7 +154,9 @@ func Me(db *sql.DB) http.HandlerFunc {
 		}
 
 		var usuario UsuarioResponse
-		err := db.QueryRow(`
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		err := db.QueryRowContext(ctx, `
 			SELECT id, nome, email, perfil, ativo
 			FROM usuarios
 			WHERE id = $1
@@ -172,6 +191,7 @@ func Me(db *sql.DB) http.HandlerFunc {
 // Mantido para compatibilidade com os handlers e testes existentes.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		if r.Method == http.MethodOptions {
 			next.ServeHTTP(w, r)
 			return
@@ -208,6 +228,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		ctx := context.WithValue(r.Context(), usuarioIDKey{}, claims.UsuarioID)
+		ctx = context.WithValue(ctx, claimsKey{}, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -228,7 +249,9 @@ func AuthMiddlewareComDB(db *sql.DB, next http.Handler) http.Handler {
 		}
 
 		var ativo bool
-		err := db.QueryRow(
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		err := db.QueryRowContext(ctx,
 			"SELECT ativo FROM usuarios WHERE id = $1",
 			usuarioID,
 		).Scan(&ativo)
@@ -248,6 +271,15 @@ func AuthMiddlewareComDB(db *sql.DB, next http.Handler) http.Handler {
 			return
 		}
 
+		valida, err := validarSessaoDB(db, r)
+		if err != nil {
+			responderErro(w, 503, "Nao foi possivel verificar a sessao.")
+			return
+		}
+		if !valida {
+			responderErro(w, 401, "Sessao invalida ou revogada.")
+			return
+		}
 		next.ServeHTTP(w, r)
 	}))
 }
@@ -269,7 +301,9 @@ func AdminMiddleware(db *sql.DB, next http.Handler) http.Handler {
 		var perfil string
 		var ativo bool
 
-		err := db.QueryRow(`
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		err := db.QueryRowContext(ctx, `
 			SELECT perfil, ativo
 			FROM usuarios
 			WHERE id = $1
@@ -296,6 +330,15 @@ func AdminMiddleware(db *sql.DB, next http.Handler) http.Handler {
 			return
 		}
 
+		valida, err := validarSessaoDB(db, r)
+		if err != nil {
+			responderErro(w, 503, "Nao foi possivel verificar a sessao.")
+			return
+		}
+		if !valida {
+			responderErro(w, 401, "Sessao invalida ou revogada.")
+			return
+		}
 		next.ServeHTTP(w, r)
 	}))
 }
@@ -305,23 +348,7 @@ func UsuarioID(r *http.Request) (int, bool) {
 	return id, ok && id > 0
 }
 
-func gerarToken(usuario UsuarioResponse) (string, error) {
-	agora := time.Now()
-
-	claims := Claims{
-		UsuarioID: usuario.ID,
-		Email:     usuario.Email,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   stringID(usuario.ID),
-			ExpiresAt: jwt.NewNumericDate(agora.Add(24 * time.Hour)),
-			IssuedAt:  jwt.NewNumericDate(agora),
-			NotBefore: jwt.NewNumericDate(agora),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(jwtSecret()))
-}
+func gerarToken(usuario UsuarioResponse) (string, error) { return tokenComVersao(usuario, 0) }
 
 func jwtSecret() string {
 	secret := strings.TrimSpace(os.Getenv("QUITAIA_JWT_SECRET"))
@@ -357,6 +384,7 @@ func responderErro(w http.ResponseWriter, status int, mensagem string) {
 }
 
 func responderJSON(w http.ResponseWriter, status int, valor interface{}) {
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(valor)
@@ -374,3 +402,6 @@ func TokenAindaValido(r *http.Request) bool {
 	verificador.ServeHTTP(httptest.NewRecorder(), r)
 	return autorizado
 }
+
+// Hash de uma senha sintetica, usado apenas para igualar trabalho em email inexistente.
+const hashFicticio = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"

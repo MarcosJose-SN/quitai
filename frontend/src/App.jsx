@@ -1,29 +1,14 @@
+import { encerrarSessaoServidor, exigirNovoLogin } from './services/sessaoRevendedora.js'
+import { enviarOperacaoFinanceira, obterOperacaoPendente } from './services/operacoesFinanceiras'
 import { conectarEventosSuporte } from './services/suporteEventos'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { fetchAutenticado, chaveDaConta, lerListaLocal, limparSessao } from './services/sessaoRevendedora'
+import { dataLocalISO, centavosValidos, quantidadeValida, criarTravaOperacoes } from './utils/validacaoRevendedora'
 import './App.css'
 import Login from './Login'
 import PoliticaPrivacidade from './pages/legal/PoliticaPrivacidade'
 import TermosUso from './pages/legal/TermosUso'
 import DireitosLGPD from './pages/legal/DireitosLGPD'
-
-// Centraliza o envio do token JWT nas requisições à API.
-// Preserva os demais cabeçalhos, como Content-Type, definidos em cada chamada.
-async function fetchAutenticado(url, options = {}) {
-  const token =
-    localStorage.getItem('quitai_token') ||
-    sessionStorage.getItem('quitai_token')
-
-  const headers = new Headers(options.headers || {})
-
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`)
-  }
-
-  return fetch(url, {
-    ...options,
-    headers,
-  })
-}
 
 function IconeNavegacao({ nome }) {
   const desenhos = {
@@ -37,6 +22,31 @@ function IconeNavegacao({ nome }) {
 }
 
 function App() {
+  const travaRef = useRef(null)
+  if (!travaRef.current) travaRef.current = criarTravaOperacoes()
+  const pedidoVendaRef = useRef(0)
+  const pedidoSuporteRef = useRef(0)
+  const chamadoAbertoRef = useRef(null)
+  const [carregandoConversa, setCarregandoConversa] = useState(false)
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8082'
+  const chaveRascunhos = chaveDaConta('quitai_suporte_rascunhos', apiBase)
+  const chaveNotificacoes = chaveDaConta('quitai_notificacoes_lidas', apiBase)
+  function enviarFormulario(chave, acao) {
+    return evento => { evento.preventDefault(); return travaRef.current(chave, () => acao(evento)) }
+  }
+  useEffect(() => {
+    const encerrar = () => window.location.replace('/')
+    const sincronizar = evento => {
+      if (evento.key === 'quitai_token' || evento.key === 'quitai_usuario' || evento.key === null) encerrar()
+    }
+    window.addEventListener('quitai:sessao-encerrada', encerrar)
+    window.addEventListener('storage', sincronizar)
+    return () => {
+      window.removeEventListener('quitai:sessao-encerrada', encerrar)
+      window.removeEventListener('storage', sincronizar)
+    }
+  }, [])
+
   const [rotaPublica, setRotaPublica] = useState(() => window.location.pathname)
   useEffect(() => {
     const atualizarRota = () => setRotaPublica(window.location.pathname)
@@ -85,9 +95,10 @@ function App() {
     }
   }, [])
   const [tela, setTela] = useState('inicio')
+  useEffect(() => { if (tela !== 'detalhes-venda') ++pedidoVendaRef.current }, [tela])
   const [notificacoesAbertas, setNotificacoesAbertas] = useState(false)
   const [notificacoesLidas, setNotificacoesLidas] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('quitai_notificacoes_lidas') || '[]') } catch { return [] }
+    return lerListaLocal(chaveNotificacoes)
   })
   const [subTelaMais, setSubTelaMais] = useState('menu')
   const [buscaSuporte, setBuscaSuporte] = useState('')
@@ -97,8 +108,12 @@ function App() {
   const [descricaoSuporte, setDescricaoSuporte] = useState('')
   const [mensagemSuporte, setMensagemSuporte] = useState('')
   const [rascunhosSuporte, setRascunhosSuporte] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('quitai_suporte_rascunhos') || '[]') } catch { return [] }
+    return lerListaLocal(chaveRascunhos).filter(item => item && typeof item.assunto === 'string' && typeof item.descricao === 'string')
   })
+  useEffect(() => {
+    setRascunhosSuporte(lerListaLocal(chaveRascunhos).filter(item => item && typeof item.assunto === 'string' && typeof item.descricao === 'string'))
+    setNotificacoesLidas(lerListaLocal(chaveNotificacoes))
+  }, [chaveRascunhos, chaveNotificacoes])
   const [enviandoSuporte, setEnviandoSuporte] = useState(false)
   const [chamadosSuporte, setChamadosSuporte] = useState([])
   const [carregandoChamadosSuporte, setCarregandoChamadosSuporte] = useState(false)
@@ -129,13 +144,30 @@ function App() {
   }
 
   async function abrirChamadoSuporte(id) {
+    if (respondendoSuporte) return
+    const pedido = ++pedidoSuporteRef.current
+    chamadoAbertoRef.current = id
+    setChamadoSelecionadoSuporte(null)
+    setRespostaSuporte('')
+    setCarregandoConversa(true)
     try {
       const dados = await requisicaoSuporte(`/suporte/${id}`)
+      if (pedido !== pedidoSuporteRef.current || chamadoAbertoRef.current !== id) return
       setChamadoSelecionadoSuporte(dados)
       setRespostaSuporte('')
     } catch (erro) {
-      setMensagemSuporte(`Não foi possível abrir o chamado: ${erro.message}`)
+      if (pedido === pedidoSuporteRef.current) setMensagemSuporte(`Não foi possível abrir o chamado: ${erro.message}`)
+    } finally {
+      if (pedido === pedidoSuporteRef.current) setCarregandoConversa(false)
     }
+  }
+
+  function fecharConversaSuporte() {
+    ++pedidoSuporteRef.current
+    chamadoAbertoRef.current = null
+    setCarregandoConversa(false)
+    setChamadoSelecionadoSuporte(null)
+    setRespostaSuporte('')
   }
 
   async function enviarSolicitacaoSuporte(evento) {
@@ -174,7 +206,7 @@ function App() {
       })
       const atualizados = rascunhosSuporte.filter((rascunho) => rascunho.id !== item.id)
       setRascunhosSuporte(atualizados)
-      localStorage.setItem('quitai_suporte_rascunhos', JSON.stringify(atualizados))
+      localStorage.setItem(chaveRascunhos, JSON.stringify(atualizados))
       setMensagemSuporte(`Rascunho enviado como chamado #${dados.id}.`)
       await carregarChamadosSuporte()
     } catch (erro) {
@@ -193,7 +225,9 @@ function App() {
         method: 'POST', body: JSON.stringify({ mensagem: respostaSuporte.trim() }),
       })
       setRespostaSuporte('')
-      await abrirChamadoSuporte(chamadoSelecionadoSuporte.id)
+      const id = chamadoSelecionadoSuporte.id
+      const dados = await requisicaoSuporte(`/suporte/${id}`)
+      if (chamadoAbertoRef.current === id) setChamadoSelecionadoSuporte(dados)
       await carregarChamadosSuporte()
       setMensagemSuporte('Resposta enviada com sucesso.')
     } catch (erro) {
@@ -204,12 +238,12 @@ function App() {
   }
 
   useEffect(() => {
-    if (autenticado && subTelaMais === 'suporte') carregarChamadosSuporte()
-  }, [autenticado, subTelaMais])
+    if (autenticado && tela === 'mais' && subTelaMais === 'suporte') carregarChamadosSuporte()
+  }, [autenticado, tela, subTelaMais])
 
   // Atualização imediata por SSE; fallback periódico em caso de falha de rede.
   useEffect(() => {
-    if (!autenticado || subTelaMais !== 'suporte') return
+    if (!autenticado || tela !== 'mais' || subTelaMais !== 'suporte') return
     let ativo = true
     let ocupado = false
     const sincronizar = async () => {
@@ -220,7 +254,7 @@ function App() {
         if (ativo && Array.isArray(lista)) setChamadosSuporte(lista)
         if (chamadoSelecionadoSuporte?.id) {
           const detalhes = await requisicaoSuporte(`/suporte/${chamadoSelecionadoSuporte.id}`)
-          if (ativo) setChamadoSelecionadoSuporte(detalhes)
+          if (ativo && chamadoAbertoRef.current === detalhes.id) setChamadoSelecionadoSuporte(detalhes)
         }
       } catch (_) { /* mantém os dados atuais */ }
       finally { ocupado = false }
@@ -231,7 +265,7 @@ function App() {
     document.addEventListener('visibilitychange', aoRetornar)
     window.addEventListener('focus', aoRetornar)
     return () => { ativo = false; desconectar(); clearInterval(intervalo); document.removeEventListener('visibilitychange', aoRetornar); window.removeEventListener('focus', aoRetornar) }
-  }, [autenticado, subTelaMais, chamadoSelecionadoSuporte?.id])
+  }, [autenticado, tela, subTelaMais, chamadoSelecionadoSuporte?.id])
 
   const perguntasSuporte = [
     { pergunta: 'Como cadastrar uma nova venda?', resposta: 'Abra Vendas, selecione Nova venda, escolha o cliente e os produtos, confira as parcelas e finalize o cadastro.' },
@@ -249,8 +283,9 @@ function App() {
     }
     const novo = { id: Date.now(), assunto: assuntoSuporte.trim(), categoria: categoriaSuporte, descricao: descricaoSuporte.trim(), criadoEm: new Date().toISOString() }
     const atualizados = [novo, ...rascunhosSuporte]
+    try { localStorage.setItem(chaveRascunhos, JSON.stringify(atualizados)) }
+    catch { setMensagemSuporte('Não foi possível salvar neste dispositivo. Seu texto foi preservado.'); return }
     setRascunhosSuporte(atualizados)
-    localStorage.setItem('quitai_suporte_rascunhos', JSON.stringify(atualizados))
     setAssuntoSuporte('')
     setDescricaoSuporte('')
     setMensagemSuporte('Rascunho salvo neste dispositivo. Você pode enviá-lo quando quiser.')
@@ -319,6 +354,10 @@ function App() {
     }
   }
 
+  const [senhaEmail, setSenhaEmail] = useState('')
+  const [codigoEmail, setCodigoEmail] = useState('')
+  const [emailPendente, setEmailPendente] = useState(false)
+
   async function salvarDadosConta(evento) {
     evento.preventDefault()
     setErroConta('')
@@ -332,10 +371,13 @@ function App() {
       const resposta = await fetchAutenticado(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/minha-conta`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome: nomeConta.trim(), email: emailConta.trim() }),
+        body: JSON.stringify({ nome: nomeConta.trim(), email: emailConta.trim(), senha_atual: senhaEmail, codigo_email: codigoEmail }),
       })
       const dados = await resposta.json().catch(() => ({}))
       if (!resposta.ok) throw new Error(dados.mensagem || 'Não foi possível atualizar o perfil.')
+      if (resposta.status === 202) { setEmailPendente(true); setMensagemConta(dados.mensagem); return }
+      if (dados.codigo === 'reautenticar') { exigirNovoLogin(); return }
+      setSenhaEmail(''); setCodigoEmail(''); setEmailPendente(false)
       setDadosConta(dados)
       setNomeConta(dados.nome)
       setEmailConta(dados.email)
@@ -355,8 +397,8 @@ function App() {
     evento.preventDefault()
     setErroConta('')
     setMensagemConta('')
-    if (novaSenha.length < 8 || novaSenha !== confirmarSenha) {
-      setErroConta('A senha deve ter pelo menos 8 caracteres e a confirmação deve coincidir.')
+    if (new TextEncoder().encode(novaSenha).length < 8 || new TextEncoder().encode(novaSenha).length > 72 || novaSenha !== confirmarSenha) {
+      setErroConta('A senha deve ter entre 8 e 72 bytes e a confirmação deve coincidir.')
       return
     }
     setSalvandoSenha(true)
@@ -375,6 +417,7 @@ function App() {
       setSenhaAtual('')
       setNovaSenha('')
       setConfirmarSenha('')
+      exigirNovoLogin()
       setAlterandoSenha(false)
       setMensagemConta(dados.mensagem || 'Senha alterada com sucesso.')
     } catch (erro) {
@@ -446,6 +489,7 @@ function App() {
   const [vendas, setVendas] = useState([])
   const [carregandoVendas, setCarregandoVendas] = useState(false)
   const [erroVendas, setErroVendas] = useState('')
+  const [avisoFinanceiro, setAvisoFinanceiro] = useState('')
 
   const [abaVendas, setAbaVendas] = useState('abertas')
 
@@ -458,7 +502,7 @@ function App() {
 
   const [formularioVenda, setFormularioVenda] = useState({
     cliente_id: '',
-    data_compra: new Date().toISOString().substring(0, 10),
+    data_compra: dataLocalISO(),
     data_vencimento: '',
     total_parcelas: '3',
   })
@@ -495,14 +539,14 @@ function App() {
   const [formularioPagamento, setFormularioPagamento] = useState({
     parcela_id: '',
     valor: '',
-    data_pagamento: new Date().toISOString().substring(0, 10),
+    data_pagamento: dataLocalISO(),
     forma_pagamento: 'PIX',
   })
 
   const [pagamentosVenda, setPagamentosVenda] = useState([])
 
   // Total real dos saldos das parcelas ainda abertas.
-  const [totalBoletosEmAberto, setTotalBoletosEmAberto] = useState(0)
+  const [totalBoletosEmAberto, setTotalBoletosEmAberto] = useState(null)
 
   const [salvandoPagamento, setSalvandoPagamento] = useState(false)
   const [erroPagamento, setErroPagamento] = useState('')
@@ -573,10 +617,13 @@ function App() {
           return
         }
 
+        const storage = localStorage.getItem('quitai_token') ? localStorage : sessionStorage
+        storage.setItem('quitai_usuario', JSON.stringify(usuario))
         setAutenticado(true)
       } catch (error) {
         // Uma falha de conexão não apaga o token salvo.
         console.error('Erro ao validar sessão:', error)
+        if (ativo) setAutenticado(false)
       } finally {
         if (ativo) {
           setValidandoSessao(false)
@@ -600,14 +647,9 @@ function App() {
     confirmarSaidaDaConta()
   }
 
-  function confirmarSaidaDaConta() {
-    localStorage.removeItem('quitai_token')
-    localStorage.removeItem('quitai_usuario')
-    sessionStorage.removeItem('quitai_token')
-    sessionStorage.removeItem('quitai_usuario')
-    setMostrarModalSaida(false)
-    setAutenticado(false)
-    setTela('inicio')
+  async function confirmarSaidaDaConta() {
+    try { await encerrarSessaoServidor(apiBase) }
+    catch (erro) { setAvisoFinanceiro(erro.message || 'Nao foi possivel encerrar a sessao.'); setMostrarModalSaida(false) }
   }
 
   // =========================================================
@@ -650,10 +692,9 @@ function App() {
       }
 
       const dados = await resposta.json()
-
-      console.log('Produtos recebidos:', dados)
-
-      setProdutos(dados || [])
+      if (!Array.isArray(dados)) throw new Error('Formato inesperado de produtos.')
+      setProdutos(dados)
+      return dados
     } catch (error) {
       console.error('Erro ao buscar produtos:', error)
 
@@ -683,10 +724,8 @@ function App() {
       }
 
       const dados = await resposta.json()
-
-      console.log('Vendas recebidas:', dados)
-
-      const vendasRecebidas = dados || []
+      if (!Array.isArray(dados)) throw new Error('Formato inesperado de vendas.')
+      const vendasRecebidas = dados
       setVendas(vendasRecebidas)
 
       // O cartão "Boletos em aberto" usa as parcelas reais do banco.
@@ -710,6 +749,7 @@ function App() {
           })
         )
 
+        if (detalhes.some(detalhe => !detalhe)) throw new Error('Resumo de parcelas incompleto.')
         const totalParcelasAbertas = detalhes.reduce(
           (total, vendaDetalhada) => {
             if (!vendaDetalhada) {
@@ -744,7 +784,7 @@ function App() {
           error
         )
 
-        setTotalBoletosEmAberto(0)
+        setTotalBoletosEmAberto(null)
       }
     } catch (error) {
       console.error(
@@ -765,13 +805,12 @@ function App() {
   // =========================================================
 
   async function abrirNovaVenda() {
+    setAvisoFinanceiro('')
     setErroFormularioVenda('')
 
     setFormularioVenda({
       cliente_id: '',
-      data_compra: new Date()
-        .toISOString()
-        .substring(0, 10),
+      data_compra: dataLocalISO(),
       data_vencimento: '',
       total_parcelas: '3',
     })
@@ -784,11 +823,24 @@ function App() {
     setItensNovaVenda([])
 
     // Carrega clientes e produtos antes de abrir
-    await Promise.all([
+    const [, produtosDisponiveis] = await Promise.all([
       buscarClientes(),
       buscarProdutos(),
     ])
 
+    try {
+      const pendente = obterOperacaoPendente(apiBase, 'venda_completa')
+      if (pendente) {
+        const pedido = pendente.pedido
+        setFormularioVenda({ cliente_id: String(pedido.cliente_id), data_compra: pedido.data_compra, data_vencimento: pedido.data_vencimento, total_parcelas: String(pedido.total_parcelas) })
+        // Names/prices are informational; retries always resend the frozen ids/quantities.
+        setItensNovaVenda(pedido.itens.map(item => {
+          const produto = (produtosDisponiveis || []).find(p => p.id === item.produto_id)
+          return { ...item, produto_nome: produto?.nome || `Produto #${item.produto_id}`, preco_unitario: Number(produto?.preco_venda || 0), subtotal: Number(produto?.preco_venda || 0) * item.quantidade }
+        }))
+        setErroFormularioVenda('Existe um pedido pendente. Os valores serao recuperados do servidor; confirme sem alterar os dados para resolver a tentativa anterior.')
+      }
+    } catch (erro) { setErroFormularioVenda(erro.message) }
     setMostrarFormularioVenda(true)
   }
 
@@ -806,9 +858,7 @@ function App() {
 
     setFormularioVenda({
       cliente_id: '',
-      data_compra: new Date()
-        .toISOString()
-        .substring(0, 10),
+      data_compra: dataLocalISO(),
       data_vencimento: '',
       total_parcelas: '3',
     })
@@ -860,7 +910,7 @@ function App() {
       return
     }
 
-    if (!quantidade || quantidade <= 0) {
+    if (!quantidadeValida(itemVenda.quantidade)) {
       setErroFormularioVenda(
         'Informe uma quantidade válida.'
       )
@@ -1022,6 +1072,15 @@ function App() {
       return
     }
 
+    let pendenteVenda
+    try { pendenteVenda = obterOperacaoPendente(apiBase, 'venda_completa') }
+    catch (erro) { setErroFormularioVenda(erro.message); return }
+    if (!pendenteVenda && calcularTotalNovaVenda() <= 0) {
+      setErroFormularioVenda('O total da venda deve ser maior que zero.')
+      return
+    }
+
+    let vendaConfirmadaId = null
     try {
       setSalvandoVenda(true)
 
@@ -1029,90 +1088,16 @@ function App() {
       // 1. CRIAR A VENDA
       // -------------------------------------------------------
 
-      const respostaVenda = await fetchAutenticado(
-        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            cliente_id: Number(
-              formularioVenda.cliente_id
-            ),
-            data_compra:
-              formularioVenda.data_compra,
-            data_vencimento:
-              formularioVenda.data_vencimento,
-            total_parcelas: totalParcelas,
-          }),
-        }
-      )
+      const vendaCriada = await enviarOperacaoFinanceira(apiBase, 'venda_completa', {
+        cliente_id: Number(formularioVenda.cliente_id),
+        data_compra: formularioVenda.data_compra,
+        data_vencimento: formularioVenda.data_vencimento,
+        total_parcelas: totalParcelas,
+        itens: itensNovaVenda.map(item => ({ produto_id: Number(item.produto_id), quantidade: Number(item.quantidade) })).sort((a,b) => a.produto_id-b.produto_id),
+      })
+      const vendaId = vendaCriada.id
+      vendaConfirmadaId = vendaId
 
-      const textoVenda =
-        await respostaVenda.text()
-
-      if (!respostaVenda.ok) {
-        throw new Error(
-          textoVenda ||
-            'Não foi possível criar a venda.'
-        )
-      }
-
-      const vendaCriada =
-        JSON.parse(textoVenda)
-
-      console.log(
-        'Venda criada:',
-        vendaCriada
-      )
-
-      const vendaId = Number(
-        vendaCriada.id
-      )
-
-      if (!vendaId) {
-        throw new Error(
-          'A venda foi criada, mas o ID não foi retornado pela API.'
-        )
-      }
-
-      // -------------------------------------------------------
-      // 2. ADICIONAR OS PRODUTOS
-      // -------------------------------------------------------
-
-      for (const item of itensNovaVenda) {
-        const respostaItem = await fetchAutenticado(
-          `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/itens`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              venda_id: vendaId,
-              produto_id: Number(
-                item.produto_id
-              ),
-              quantidade: Number(
-                item.quantidade
-              ),
-            }),
-          }
-        )
-
-        const textoItem =
-          await respostaItem.text()
-
-        if (!respostaItem.ok) {
-          throw new Error(
-            textoItem ||
-              `Não foi possível adicionar o produto "${item.produto_nome}".`
-          )
-        }
-      }
-
-      // -------------------------------------------------------
       // 3. LIMPAR FORMULÁRIO
       // -------------------------------------------------------
 
@@ -1120,9 +1105,7 @@ function App() {
 
       setFormularioVenda({
         cliente_id: '',
-        data_compra: new Date()
-          .toISOString()
-          .substring(0, 10),
+        data_compra: dataLocalISO(),
         data_vencimento: '',
         total_parcelas: '3',
       })
@@ -1158,8 +1141,15 @@ function App() {
         setTela('detalhes-venda')
       } else {
         setTela('vendas')
+        setAvisoFinanceiro(`Venda #${vendaId} confirmada. Nao cadastre novamente; reabra a venda para atualizar os detalhes.`)
       }
     } catch (error) {
+      if (vendaConfirmadaId) {
+        setMostrarFormularioVenda(false)
+        setTela('vendas')
+        setAvisoFinanceiro(`Venda #${vendaConfirmadaId} confirmada. Nao cadastre novamente; houve uma falha ao atualizar os detalhes.`)
+        return
+      }
       console.error(
         'Erro ao salvar venda:',
         error
@@ -1193,6 +1183,9 @@ function App() {
   // =========================================================
 
   async function abrirDetalhesVenda(venda) {
+    const pedido = ++pedidoVendaRef.current
+    setTela('detalhes-venda')
+    setPagamentosVenda([])
     try {
       setCarregandoDetalhesVenda(true)
       setErroDetalhesVenda('')
@@ -1213,12 +1206,7 @@ function App() {
       }
 
       const dados = await resposta.json()
-
-      console.log(
-        'Detalhes da venda recebidos:',
-        dados
-      )
-
+      if (pedido !== pedidoVendaRef.current) return
       setVendaSelecionada(dados)
 
       const respostaPagamentos = await fetchAutenticado(
@@ -1227,13 +1215,15 @@ function App() {
 
       if (respostaPagamentos.ok) {
         const dadosPagamentos = await respostaPagamentos.json()
+        if (pedido !== pedidoVendaRef.current) return
         setPagamentosVenda(dadosPagamentos)
       } else {
-        setPagamentosVenda([])
+        throw new Error('Não foi possível carregar o histórico de pagamentos.')
       }
 
       setTela('detalhes-venda')
     } catch (error) {
+      if (pedido !== pedidoVendaRef.current) return
       console.error(
         'Erro ao buscar detalhes da venda:',
         error
@@ -1243,7 +1233,7 @@ function App() {
         'Não foi possível carregar os detalhes da venda.'
       )
     } finally {
-      setCarregandoDetalhesVenda(false)
+      if (pedido === pedidoVendaRef.current) setCarregandoDetalhesVenda(false)
     }
   }
 
@@ -1293,10 +1283,29 @@ function App() {
   // PAGAMENTOS - FORMULÁRIO
   // =========================================================
 
+  function pagamentoPendenteNaVenda(id) {
+    try { return obterOperacaoPendente(apiBase, 'pagamento')?.pedido.venda_id === id }
+    catch { return false }
+  }
+
   function abrirFormularioPagamento() {
     if (!vendaSelecionada?.venda) {
       return
     }
+
+    try {
+      const pendente = obterOperacaoPendente(apiBase, 'pagamento')
+      if (pendente) {
+        if (pendente.pedido.venda_id !== vendaSelecionada.venda.id) {
+          setErroDetalhesVenda(`Existe um pagamento pendente na venda #${pendente.pedido.venda_id}. Abra essa venda para resolver a operacao.`)
+          return
+        }
+        setFormularioPagamento({ parcela_id: String(pendente.pedido.parcela_id), valor: String(pendente.pedido.valor), data_pagamento: pendente.pedido.data_pagamento, forma_pagamento: pendente.pedido.forma_pagamento })
+        setErroPagamento('Existe um pagamento pendente. Confirme o pedido original para recuperar o resultado, sem registrar outro recebimento.')
+        setMostrarFormularioPagamento(true)
+        return
+      }
+    } catch (erro) { setErroDetalhesVenda(erro.message); return }
 
     const parcelas = vendaSelecionada.parcelas || []
 
@@ -1310,9 +1319,7 @@ function App() {
         ? String(primeiraParcelaAberta.id)
         : '',
       valor: '',
-      data_pagamento: new Date()
-        .toISOString()
-        .substring(0, 10),
+      data_pagamento: dataLocalISO(),
       forma_pagamento: 'PIX',
     })
 
@@ -1349,6 +1356,9 @@ function App() {
       return
     }
 
+    let pendentePagamento
+    try { pendentePagamento = obterOperacaoPendente(apiBase, 'pagamento') }
+    catch (erro) { setErroPagamento(erro.message); return }
     if (!formularioPagamento.parcela_id) {
       setErroPagamento(
         'Selecione a parcela que receberá o pagamento.'
@@ -1372,20 +1382,19 @@ function App() {
         )
       : 0
 
-    if (!parcelaPagamento || saldoParcela <= 0) {
+    if (!pendentePagamento && (!parcelaPagamento || saldoParcela <= 0)) {
       setErroPagamento(
         'A parcela selecionada não possui saldo em aberto.'
       )
       return
     }
 
-    const valorPagamento = Number(
-      formularioPagamento.valor
-    )
+    const centavosPagamento = centavosValidos(formularioPagamento.valor)
+    const valorPagamento = centavosPagamento === null ? NaN : centavosPagamento / 100
 
-    if (!valorPagamento || valorPagamento <= 0) {
+    if (centavosPagamento === null || centavosPagamento <= 0) {
       setErroPagamento(
-        'Informe quanto a cliente pagou.'
+        'Informe um valor positivo com no máximo duas casas decimais.'
       )
       return
     }
@@ -1396,14 +1405,14 @@ function App() {
       vendaSelecionada.venda.saldo || 0
     )
 
-    if (saldoTotalVenda <= 0) {
+    if (!pendentePagamento && saldoTotalVenda <= 0) {
       setErroPagamento(
         'Esta venda já está quitada.'
       )
       return
     }
 
-    if (valorPagamento > saldoTotalVenda) {
+    if (!pendentePagamento && centavosPagamento > Math.round(saldoTotalVenda * 100)) {
       setErroPagamento(
         `O pagamento não pode ser maior que o saldo total da venda de R$ ${formatarMoeda(
           saldoTotalVenda
@@ -1426,56 +1435,26 @@ function App() {
       return
     }
 
+    let pagamentoConfirmado = false
     try {
       setSalvandoPagamento(true)
       setErroPagamento('')
 
-      const resposta = await fetchAutenticado(
-        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/pagamentos`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            venda_id:
-              vendaSelecionada.venda.id,
-            parcela_id: Number(formularioPagamento.parcela_id),
-            valor: valorPagamento,
-            data_pagamento:
-              formularioPagamento.data_pagamento,
-            forma_pagamento:
-              formularioPagamento.forma_pagamento,
-          }),
-        }
-      )
+      await enviarOperacaoFinanceira(apiBase, 'pagamento', {
+        venda_id: vendaSelecionada.venda.id,
+        parcela_id: Number(formularioPagamento.parcela_id),
+        valor: valorPagamento,
+        data_pagamento: formularioPagamento.data_pagamento,
+        forma_pagamento: formularioPagamento.forma_pagamento,
+      })
 
-      const mensagem =
-        await resposta.text()
-
-      if (!resposta.ok) {
-        throw new Error(
-          mensagem ||
-            'Não foi possível registrar o pagamento.'
-        )
-      }
-
-      const resultado =
-        JSON.parse(mensagem)
-
-      console.log(
-        'Pagamento registrado:',
-        resultado
-      )
-
+      pagamentoConfirmado = true
       setMostrarFormularioPagamento(false)
 
       setFormularioPagamento({
         parcela_id: '',
         valor: '',
-        data_pagamento: new Date()
-          .toISOString()
-          .substring(0, 10),
+        data_pagamento: dataLocalISO(),
         forma_pagamento: 'PIX',
       })
 
@@ -1504,6 +1483,8 @@ function App() {
       if (respostaPagamentos.ok) {
         const dadosPagamentos = await respostaPagamentos.json()
         setPagamentosVenda(dadosPagamentos)
+      } else {
+        throw new Error('Pagamento registrado, mas o historico nao pode ser atualizado.')
       }
 
       await buscarVendas()
@@ -1529,7 +1510,13 @@ function App() {
         }
       }
 
-      setErroPagamento(mensagemErro)
+      if (pagamentoConfirmado) {
+        setVendaSelecionada(null)
+        setPagamentosVenda([])
+        setErroDetalhesVenda('Pagamento registrado. Não envie novamente: volte para Vendas e reabra a venda para atualizar os valores.')
+      } else {
+        setErroPagamento(mensagemErro)
+      }
     } finally {
       setSalvandoPagamento(false)
     }
@@ -1632,6 +1619,10 @@ function App() {
         ),
       }
 
+      if (!dados.nome.trim() || !dados.codigo.trim() || !quantidadeValida(formularioProduto.estoque, true) || centavosValidos(formularioProduto.preco_custo) === null || centavosValidos(formularioProduto.preco_venda) === null || dados.preco_custo < 0 || dados.preco_venda < 0) {
+        throw new Error('Informe nome, código, preços válidos e estoque inteiro não negativo.')
+      }
+
       const editando =
         produtoEditandoId !== null
 
@@ -1667,14 +1658,7 @@ function App() {
         )
       }
 
-      const produtoSalvo =
-        await resposta.json()
-
-      console.log(
-        'Produto salvo:',
-        produtoSalvo
-      )
-
+      await resposta.json()
       fecharFormularioProduto()
 
       await buscarProdutos()
@@ -1685,9 +1669,7 @@ function App() {
       )
 
       setErroFormularioProduto(
-        produtoEditandoId !== null
-          ? 'Não foi possível editar o produto.'
-          : 'Não foi possível cadastrar o produto.'
+        error.message || 'Não foi possível salvar o produto.'
       )
     } finally {
       setSalvandoProduto(false)
@@ -1741,12 +1723,6 @@ function App() {
             'Erro ao excluir produto'
         )
       }
-
-      console.log(
-        'Produto excluído:',
-        produtoParaExcluir
-      )
-
       setProdutoParaExcluir(null)
 
       await buscarProdutos()
@@ -1798,13 +1774,8 @@ function App() {
 
       const dados =
         await resposta.json()
-
-      console.log(
-        'Clientes recebidos:',
-        dados
-      )
-
-      setClientes(dados || [])
+      if (!Array.isArray(dados)) throw new Error('Formato inesperado de clientes.')
+      setClientes(dados)
     } catch (error) {
       console.error(
         'Erro ao buscar clientes:',
@@ -1902,6 +1873,8 @@ function App() {
           formularioCliente.observacoes,
       }
 
+      if (!dados.nome.trim()) throw new Error('Informe o nome do cliente.')
+
       const editando =
         clienteEditandoId !== null
 
@@ -1937,14 +1910,7 @@ function App() {
         )
       }
 
-      const clienteSalvo =
-        await resposta.json()
-
-      console.log(
-        'Cliente salvo:',
-        clienteSalvo
-      )
-
+      await resposta.json()
       fecharFormularioCliente()
 
       await buscarClientes()
@@ -1955,9 +1921,7 @@ function App() {
       )
 
       setErroFormularioCliente(
-        clienteEditandoId !== null
-          ? 'Não foi possível editar o cliente.'
-          : 'Não foi possível cadastrar o cliente.'
+        error.message || 'Não foi possível salvar o cliente.'
       )
     } finally {
       setSalvandoCliente(false)
@@ -2010,12 +1974,6 @@ function App() {
         erro.status = resposta.status
         throw erro
       }
-
-      console.log(
-        'Cliente excluído:',
-        clienteExcluindo
-      )
-
       setClienteExcluindo(null)
 
       await buscarClientes()
@@ -2088,11 +2046,12 @@ function App() {
       .filter((venda) => ['VENCIDO', 'VENCE_EM_BREVE'].includes(String(venda.status || '').toUpperCase()))
       .map((venda) => {
         const vencido = String(venda.status || '').toUpperCase() === 'VENCIDO'
-        const id = `${venda.id || venda.venda_id || 'venda'}-${venda.status}-${venda.vencimento || ''}`
+        const vencimento = venda.proximo_vencimento || venda.vencimento
+        const id = `${venda.id || venda.venda_id || 'venda'}-${venda.status}-${vencimento || ''}`
         return {
           id,
           titulo: vencido ? 'Pagamento em atraso' : 'Vencimento próximo',
-          mensagem: `${venda.cliente_nome || venda.nome_cliente || venda.cliente || 'Cliente'} · vencimento ${formatarData(venda.vencimento)}`,
+          mensagem: `${venda.cliente_nome || venda.nome_cliente || venda.cliente || 'Cliente'} · vencimento ${formatarData(vencimento)}`,
           valor: venda.saldo ?? venda.total ?? venda.valor_total,
           vencido,
         }
@@ -2103,7 +2062,7 @@ function App() {
     setNotificacoesAbertas(true)
     const ids = obterNotificacoes().map((item) => item.id)
     setNotificacoesLidas(ids)
-    localStorage.setItem('quitai_notificacoes_lidas', JSON.stringify(ids))
+    localStorage.setItem(chaveNotificacoes, JSON.stringify(ids))
   }
 
   function obterStatusVenda(status) {
@@ -2253,7 +2212,7 @@ function App() {
             return
           }
           if (usuario?.perfil === 'revendedora' && usuario?.ativo !== false) {
-            setAutenticado(true)
+            window.location.replace('/')
             return
           }
           setAutenticado(false)
@@ -2264,6 +2223,7 @@ function App() {
 
   return (
     <div className={`app tema-${temaEfetivo}`} data-tema={temaAtual}>
+      {avisoFinanceiro && <p role="status" style={{ maxWidth: 700, margin: '12px auto', padding: '0 20px' }}>{avisoFinanceiro}</p>}
       {sistema.manutencao ? (
         <div className="qa-maintenance-screen" role="status" aria-live="polite">
           <style>{`
@@ -2611,7 +2571,7 @@ function App() {
                 </span>
 
                 <strong>
-                  R$ {formatarMoeda(totalBoletosEmAberto)}
+                  R$ {totalBoletosEmAberto === null ? '—' : formatarMoeda(totalBoletosEmAberto)}
                 </strong>
               </button>
 
@@ -2779,9 +2739,7 @@ function App() {
                                 fontWeight: '700',
                               }}
                             >
-                              {venda.status === 'QUITADO'
-                                ? 'QUITADO'
-                                : 'EM ABERTO'}
+                              {obterStatusVenda(venda.status).texto}
                             </span>
                           </div>
                         </div>
@@ -3132,7 +3090,7 @@ function App() {
 
                 <form
                   className="formulario-produto"
-                  onSubmit={salvarProduto}
+                  onSubmit={enviarFormulario('salvarProduto', salvarProduto)}
                 >
 
                   <label>
@@ -3441,9 +3399,7 @@ function App() {
                   {!erroExclusaoProduto && (
                   <button
                     type="button"
-                    onClick={
-                      confirmarExclusaoProduto
-                    }
+                    onClick={() => travaRef.current('confirmarExclusaoProduto', confirmarExclusaoProduto)}
                     disabled={
                       excluindoProduto
                     }
@@ -3780,9 +3736,7 @@ function App() {
 
                 <form
                   className="formulario-produto"
-                  onSubmit={
-                    salvarCliente
-                  }
+                  onSubmit={enviarFormulario('salvarCliente', salvarCliente)}
                 >
 
                   <label>
@@ -4048,9 +4002,7 @@ function App() {
                   {!erroExclusaoCliente && (
                   <button
                     type="button"
-                    onClick={
-                      excluirCliente
-                    }
+                    onClick={() => travaRef.current('excluirCliente', excluirCliente)}
                     disabled={
                       excluindoCliente
                     }
@@ -5501,11 +5453,11 @@ function App() {
 
                   )}
 
-                  {Number(
+                  {(Number(
                     vendaSelecionada
                       .venda
                       .saldo
-                  ) > 0 && (
+                  ) > 0 || pagamentoPendenteNaVenda(vendaSelecionada.venda.id)) && (
 
                     <button
                       type="button"
@@ -5570,7 +5522,7 @@ function App() {
                 {erroExclusaoVenda && <div role="alert" style={{ color: '#9f1239', background: '#fff1f2', borderRadius: '12px', padding: '12px', fontSize: '13px', marginBottom: '14px' }}>{erroExclusaoVenda}</div>}
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <button type="button" onClick={fecharConfirmacaoExcluirVenda} disabled={excluindoVenda} style={{ flex: 1, minHeight: '46px', border: 'none', borderRadius: '12px', background: '#f7f3f5', color: '#666', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
-                  <button type="button" onClick={confirmarExclusaoVenda} disabled={excluindoVenda} style={{ flex: 1, minHeight: '46px', border: 'none', borderRadius: '12px', background: '#be123c', color: '#fff', fontWeight: 700, cursor: excluindoVenda ? 'wait' : 'pointer' }}>{excluindoVenda ? 'Excluindo...' : 'Sim, excluir venda'}</button>
+                  <button type="button" onClick={() => travaRef.current('confirmarExclusaoVenda', confirmarExclusaoVenda)} disabled={excluindoVenda} style={{ flex: 1, minHeight: '46px', border: 'none', borderRadius: '12px', background: '#be123c', color: '#fff', fontWeight: 700, cursor: excluindoVenda ? 'wait' : 'pointer' }}>{excluindoVenda ? 'Excluindo...' : 'Sim, excluir venda'}</button>
                 </div>
               </div>
             </div>
@@ -5627,9 +5579,7 @@ function App() {
 
                 <form
                   className="formulario-produto"
-                  onSubmit={
-                    registrarPagamento
-                  }
+                  onSubmit={enviarFormulario('registrarPagamento', registrarPagamento)}
                 >
 
                   <div
@@ -6233,9 +6183,7 @@ function App() {
 
             <form
               className="formulario-produto"
-              onSubmit={
-                salvarVenda
-              }
+              onSubmit={enviarFormulario('salvarVenda', salvarVenda)}
             >
 
               {/* CLIENTE */}
@@ -7066,7 +7014,7 @@ function App() {
                 <div className="suporte-bloco" id="qa-suporte-novo-chamado">
                   <div className="suporte-titulo-linha"><span className="suporte-titulo-icone">✎</span><div><h3>Enviar uma solicitação</h3><p>Descreva sua dúvida para que a equipe de suporte possa responder.</p></div></div>
                   <p className="suporte-aviso">As solicitações enviadas são registradas no servidor e ficam disponíveis para a equipe de suporte.</p>
-                  <form className="suporte-formulario" onSubmit={enviarSolicitacaoSuporte}>
+                  <form className="suporte-formulario" onSubmit={enviarFormulario('enviarSolicitacaoSuporte', enviarSolicitacaoSuporte)}>
                     <label>Categoria<select value={categoriaSuporte} onChange={(e) => setCategoriaSuporte(e.target.value)}>
                       <option>Dúvidas gerais</option><option>Vendas e parcelas</option><option>Clientes e produtos</option><option>Acesso e conta</option><option>Problema técnico</option><option>Sugestões</option>
                     </select></label>
@@ -7085,7 +7033,7 @@ function App() {
                       <button type="button" onClick={() => {
                         const atualizados = rascunhosSuporte.filter((r) => r.id !== item.id)
                         setRascunhosSuporte(atualizados)
-                        localStorage.setItem('quitai_suporte_rascunhos', JSON.stringify(atualizados))
+                        localStorage.setItem(chaveRascunhos, JSON.stringify(atualizados))
                       }} aria-label={'Excluir rascunho ' + item.assunto}>Excluir</button>
                     </div>
                   ))}
@@ -7112,12 +7060,13 @@ function App() {
                           </span>
                         </div>
                       </div>
-                      <button className="qa-ticket-open" type="button" onClick={() => abrirChamadoSuporte(item.id)}>Ver conversa <span aria-hidden="true">→</span></button>
+                      <button className="qa-ticket-open" type="button" onClick={() => abrirChamadoSuporte(item.id)} disabled={respondendoSuporte}>Ver conversa <span aria-hidden="true">→</span></button>
                     </div>
                   ))}
+                  {carregandoConversa && <p role="status">Carregando atendimento...</p>}
                   {chamadoSelecionadoSuporte && (
                     <div className="qa-chat qa-chat-rosa">
-                      <header className="qa-chat-header"><button type="button" className="qa-chat-back" onClick={() => setChamadoSelecionadoSuporte(null)}>←</button><span className="qa-chat-avatar">Q</span><div className="qa-chat-title"><strong>Suporte QuitaAí</strong><small>Chamado #{chamadoSelecionadoSuporte.id} · {chamadoSelecionadoSuporte.status === 'em_andamento' ? 'Em andamento' : chamadoSelecionadoSuporte.status === 'resolvido' ? 'Resolvido' : 'Aberto'}</small></div></header>
+                      <header className="qa-chat-header"><button type="button" className="qa-chat-back" onClick={fecharConversaSuporte} disabled={respondendoSuporte}>←</button><span className="qa-chat-avatar">Q</span><div className="qa-chat-title"><strong>Suporte QuitaAí</strong><small>Chamado #{chamadoSelecionadoSuporte.id} · {chamadoSelecionadoSuporte.status === 'em_andamento' ? 'Em andamento' : chamadoSelecionadoSuporte.status === 'resolvido' ? 'Resolvido' : 'Aberto'}</small></div></header>
                       <div className="qa-chat-subject">{chamadoSelecionadoSuporte.assunto}</div>
                       <div className="qa-chat-messages" aria-label="Mensagens do chamado">
                         {(chamadoSelecionadoSuporte.mensagens || []).map(msg => (
@@ -7134,8 +7083,7 @@ function App() {
                           <p>Seu atendimento foi encerrado pela equipe QuitaAí. O histórico desta conversa continuará disponível para consulta.</p>
                           <div className="qa-chat-finalizado-bloqueio">🔒 Esta conversa foi encerrada e não aceita novas mensagens.</div>
                           <button type="button" className="qa-chat-novo-chamado" onClick={() => {
-                            setChamadoSelecionadoSuporte(null)
-                            setRespostaSuporte('')
+                            fecharConversaSuporte()
                             setAssuntoSuporte('')
                             setDescricaoSuporte('')
                             setMensagemSuporte('')
@@ -7143,7 +7091,7 @@ function App() {
                           }}>＋ Abrir novo chamado</button>
                         </div>
                       ) : (
-                        <form className="qa-chat-compose" onSubmit={responderChamadoSuporte}><textarea aria-label="Escrever mensagem" rows={2} maxLength={5000} placeholder="Digite sua mensagem..." value={respostaSuporte} onChange={e => setRespostaSuporte(e.target.value)} required /><button type="submit" disabled={respondendoSuporte || !respostaSuporte.trim()} aria-label="Enviar mensagem">➤</button></form>
+                        <form className="qa-chat-compose" onSubmit={enviarFormulario('responderChamadoSuporte', responderChamadoSuporte)}><textarea aria-label="Escrever mensagem" rows={2} maxLength={5000} placeholder="Digite sua mensagem..." value={respostaSuporte} onChange={e => setRespostaSuporte(e.target.value)} required /><button type="submit" disabled={respondendoSuporte || !respostaSuporte.trim()} aria-label="Enviar mensagem">➤</button></form>
                       )}
                     </div>
                   )}
@@ -7178,10 +7126,15 @@ function App() {
                     <div><span>Tipo de acesso</span><strong>Revendedora</strong></div>
                   </div>}
                   {editandoConta && (
-                    <form className="conta-formulario" onSubmit={salvarDadosConta}>
+                    <form className="conta-formulario" onSubmit={enviarFormulario('salvarDadosConta', salvarDadosConta)}>
                       <p className="conta-formulario-intro">Atualize suas informações abaixo. Os dados serão utilizados para identificar sua conta.</p>
                       <label>Nome completo<input required minLength={2} maxLength={120} value={nomeConta} onChange={(e) => setNomeConta(e.target.value)} /></label>
                       <label>E-mail<input required type="email" maxLength={254} value={emailConta} onChange={(e) => setEmailConta(e.target.value)} /></label>
+                      {emailConta.trim().toLowerCase() !== dadosConta?.email?.toLowerCase() && <>
+                        <label>Senha atual<input type="password" autoComplete="current-password" required value={senhaEmail} onChange={e => setSenhaEmail(e.target.value)} /></label>
+                        <label>Codigo enviado ao novo e-mail<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={codigoEmail} onChange={e => setCodigoEmail(e.target.value.replace(/\D/g, '').slice(0, 6))} /></label>
+                        <p>Seu e-mail atual sera preservado ate a confirmacao. {emailPendente ? mensagemConta : 'Salve para solicitar o codigo; depois informe-o e salve novamente.'}</p>
+                      </>}
                       <div className="conta-acoes">
                         <button type="submit" className="conta-atualizar" disabled={salvandoConta}>{salvandoConta ? 'Salvando...' : 'Salvar alterações'}</button>
                         <button type="button" className="conta-secundario" onClick={() => { setEditandoConta(false); setErroConta(''); setNomeConta(dadosConta?.nome || ''); setEmailConta(dadosConta?.email || '') }}>Cancelar</button>
@@ -7200,7 +7153,7 @@ function App() {
                   {!alterandoSenha ? (
                     <button type="button" className="conta-atualizar" onClick={() => { setMensagemConta(''); setAlterandoSenha(true) }}>🔒 Alterar senha</button>
                   ) : (
-                    <form className="conta-formulario" onSubmit={salvarNovaSenha}>
+                    <form className="conta-formulario" onSubmit={enviarFormulario('salvarNovaSenha', salvarNovaSenha)}>
                       <p className="conta-formulario-intro">Por segurança, confirme sua senha atual antes de definir uma nova.</p>
                       <label>Senha atual<input type="password" autoComplete="current-password" required value={senhaAtual} onChange={(e) => setSenhaAtual(e.target.value)} /></label>
                       <label>Nova senha<input type="password" autoComplete="new-password" required minLength={8} maxLength={72} value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} /></label>

@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
     "net/http/httptest"
@@ -31,6 +31,7 @@ func TestSSEBloqueiaRevendedoraDuranteManutencao(t *testing.T) {
         t.Fatal(err)
     }
 
+    mock.ExpectQuery("SELECT versao_sessao").WillReturnRows(sqlmock.NewRows([]string{"valida"}).AddRow(true))
     mock.ExpectQuery("SELECT manutencao,mensagem FROM sistema_configuracao").
         WillReturnRows(sqlmock.NewRows([]string{"manutencao", "mensagem"}).
             AddRow(true, "Sistema em manutencao"))

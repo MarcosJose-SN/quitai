@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/MarcosJose/quitai/auth"
 	"github.com/MarcosJose/quitai/database"
@@ -28,7 +29,7 @@ func cors(next http.Handler) http.Handler {
 		if permitida {
 			w.Header().Set("Access-Control-Allow-Origin", origemPermitida)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key")
 		}
 
 		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
@@ -60,10 +61,17 @@ func main() {
 		log.Fatal("Erro ao conectar ao PostgreSQL: ", err)
 	}
 	defer db.Close()
+	if err := database.ValidarEsquemaFinanceiro(db); err != nil {
+		log.Fatal(err)
+	}
 
 	// Inicialização dos avisos e da manutenção.
 	if err := inicializarComunicados(db); err != nil {
 		log.Fatal("Erro ao preparar avisos e manutenção: ", err)
+	}
+
+	if err := auth.ValidarEsquema(db); err != nil {
+		log.Fatal(err)
 	}
 
 	// HEALTH CHECK - RENDER
@@ -115,6 +123,7 @@ func main() {
 	})
 
 	http.HandleFunc("/auth/login", auth.Login(db))
+	http.Handle("/auth/logout", auth.AuthMiddleware(auth.Logout(db)))
 
 	http.Handle(
 		"/auth/me",
@@ -352,11 +361,13 @@ func main() {
 
 	// VENDAS
 
+	http.Handle("/vendas/completa", auth.AuthMiddlewareComDB(db, bloquearManutencao(db, handlers.CriarVendaCompleta(db))))
+
 	http.Handle(
 		"/vendas",
 		auth.AuthMiddlewareComDB(
 			db,
-			bloquearManutencao(db, handlers.CriarVenda(db)),
+			bloquearManutencao(db, http.HandlerFunc(handlers.ProtocoloVendaDesativado)),
 		),
 	)
 
@@ -372,7 +383,7 @@ func main() {
 		"/vendas/itens",
 		auth.AuthMiddlewareComDB(
 			db,
-			bloquearManutencao(db, handlers.AdicionarItemVenda(db)),
+			bloquearManutencao(db, http.HandlerFunc(handlers.ProtocoloVendaDesativado)),
 		),
 	)
 
@@ -415,10 +426,7 @@ func main() {
 
 	fmt.Printf("QuitaAí API funcionando na porta %s\n", porta)
 
-	log.Fatal(
-		http.ListenAndServe(
-			":"+porta,
-			cors(http.DefaultServeMux),
-		),
-	)
+	servidor := &http.Server{Addr: ":" + porta, Handler: cors(http.DefaultServeMux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	// No global WriteTimeout: authenticated SSE validates its session on every pulse.
+	log.Fatal(servidor.ListenAndServe())
 }
