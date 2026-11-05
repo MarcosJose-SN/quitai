@@ -196,6 +196,7 @@ func TestAdminFotoPerfilBloqueiaRevendedora(t *testing.T) {
 			sqlmock.NewRows([]string{"perfil", "ativo"}).
 				AddRow("revendedora", true),
 		)
+	mock.ExpectQuery("SELECT versao_sessao").WillReturnRows(sqlmock.NewRows([]string{"valida"}).AddRow(true))
 
 	handler := auth.AdminMiddleware(db, AdminFotoPerfil(db))
 	req := httptest.NewRequest(http.MethodGet, "/admin/perfil/foto", nil)

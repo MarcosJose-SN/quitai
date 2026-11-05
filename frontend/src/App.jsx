@@ -1,5 +1,6 @@
+import { useRecuperacaoFinanceira } from './services/useRecuperacaoFinanceira.js'
 import { encerrarSessaoServidor, exigirNovoLogin } from './services/sessaoRevendedora.js'
-import { enviarOperacaoFinanceira, obterOperacaoPendente } from './services/operacoesFinanceiras'
+import { enviarOperacaoFinanceira, obterOperacaoPendente, prepararIntencaoFinanceira } from './services/operacoesFinanceiras'
 import { conectarEventosSuporte } from './services/suporteEventos'
 import { useEffect, useRef, useState } from 'react'
 import { fetchAutenticado, chaveDaConta, lerListaLocal, limparSessao } from './services/sessaoRevendedora'
@@ -513,6 +514,8 @@ function App() {
   })
 
   const [itensNovaVenda, setItensNovaVenda] = useState([])
+  const intencaoVendaRef = useRef(null)
+  const intencaoPagamentoRef = useRef(null)
 
   const [salvandoVenda, setSalvandoVenda] = useState(false)
   const [erroFormularioVenda, setErroFormularioVenda] = useState('')
@@ -522,6 +525,7 @@ function App() {
   // =========================================================
 
   const [vendaSelecionada, setVendaSelecionada] = useState(null)
+  const recuperacaoPagamento = useRecuperacaoFinanceira(apiBase, 'pagamento', autenticado && !validandoSessao, vendaSelecionada?.venda?.id)
   const [carregandoDetalhesVenda, setCarregandoDetalhesVenda] =
     useState(false)
   const [erroDetalhesVenda, setErroDetalhesVenda] = useState('')
@@ -580,19 +584,8 @@ function App() {
           }
         )
 
-        if (resposta.status === 401 || resposta.status === 403) {
-          localStorage.removeItem('quitai_token')
-          localStorage.removeItem('quitai_usuario')
-          sessionStorage.removeItem('quitai_token')
-          sessionStorage.removeItem('quitai_usuario')
-
-          if (ativo) {
-            setAutenticado(false)
-          }
-
-          return
-        }
-
+        // Session invalidation is centralized in fetchAutenticado. A validated
+        // permission denial must not erase authentication here.
         if (!resposta.ok) {
           throw new Error('Não foi possível validar a sessão no momento.')
         }
@@ -807,6 +800,9 @@ function App() {
   async function abrirNovaVenda() {
     setAvisoFinanceiro('')
     setErroFormularioVenda('')
+    intencaoVendaRef.current = null
+    try { intencaoVendaRef.current = await prepararIntencaoFinanceira(apiBase, 'venda_completa') }
+    catch (erro) { setAvisoFinanceiro(erro.message); return }
 
     setFormularioVenda({
       cliente_id: '',
@@ -829,7 +825,7 @@ function App() {
     ])
 
     try {
-      const pendente = obterOperacaoPendente(apiBase, 'venda_completa')
+      const pendente = intencaoVendaRef.current.pendente
       if (pendente) {
         const pedido = pendente.pedido
         setFormularioVenda({ cliente_id: String(pedido.cliente_id), data_compra: pedido.data_compra, data_vencimento: pedido.data_vencimento, total_parcelas: String(pedido.total_parcelas) })
@@ -853,6 +849,7 @@ function App() {
       return
     }
 
+    intencaoVendaRef.current = null
     setMostrarFormularioVenda(false)
     setErroFormularioVenda('')
 
@@ -1073,7 +1070,7 @@ function App() {
     }
 
     let pendenteVenda
-    try { pendenteVenda = obterOperacaoPendente(apiBase, 'venda_completa') }
+    try { pendenteVenda = await obterOperacaoPendente(apiBase, 'venda_completa') }
     catch (erro) { setErroFormularioVenda(erro.message); return }
     if (!pendenteVenda && calcularTotalNovaVenda() <= 0) {
       setErroFormularioVenda('O total da venda deve ser maior que zero.')
@@ -1094,7 +1091,7 @@ function App() {
         data_vencimento: formularioVenda.data_vencimento,
         total_parcelas: totalParcelas,
         itens: itensNovaVenda.map(item => ({ produto_id: Number(item.produto_id), quantidade: Number(item.quantidade) })).sort((a,b) => a.produto_id-b.produto_id),
-      })
+      }, intencaoVendaRef.current)
       const vendaId = vendaCriada.id
       vendaConfirmadaId = vendaId
 
@@ -1284,17 +1281,26 @@ function App() {
   // =========================================================
 
   function pagamentoPendenteNaVenda(id) {
-    try { return obterOperacaoPendente(apiBase, 'pagamento')?.pedido.venda_id === id }
-    catch { return false }
+    return recuperacaoPagamento.pendente?.pedido.venda_id === id
   }
 
-  function abrirFormularioPagamento() {
+  async function abrirFormularioPagamento() {
     if (!vendaSelecionada?.venda) {
       return
     }
 
     try {
-      const pendente = obterOperacaoPendente(apiBase, 'pagamento')
+      intencaoPagamentoRef.current = null
+      const somenteRecuperar = Number(vendaSelecionada.venda.saldo) <= 0 || pagamentoPendenteNaVenda(vendaSelecionada.venda.id)
+      const intencao = await prepararIntencaoFinanceira(apiBase, 'pagamento', { somenteRecuperar })
+      if (intencao.confirmada) {
+        setErroDetalhesVenda('Pagamento ja confirmado no servidor. Atualize os detalhes da venda; nao envie outro recebimento para recuperar este resultado.')
+        recuperacaoPagamento.atualizar()
+        return
+      }
+      if (somenteRecuperar && !intencao.pendente) throw new Error('Nao ha pagamento enviado a recuperar. Atualize os detalhes da venda.')
+      intencaoPagamentoRef.current = { ...intencao, vendaId: vendaSelecionada.venda.id }
+      const pendente = intencao.pendente
       if (pendente) {
         if (pendente.pedido.venda_id !== vendaSelecionada.venda.id) {
           setErroDetalhesVenda(`Existe um pagamento pendente na venda #${pendente.pedido.venda_id}. Abra essa venda para resolver a operacao.`)
@@ -1332,6 +1338,7 @@ function App() {
       return
     }
 
+    intencaoPagamentoRef.current = null
     setMostrarFormularioPagamento(false)
     setErroPagamento('')
   }
@@ -1357,7 +1364,7 @@ function App() {
     }
 
     let pendentePagamento
-    try { pendentePagamento = obterOperacaoPendente(apiBase, 'pagamento') }
+    try { pendentePagamento = await obterOperacaoPendente(apiBase, 'pagamento') }
     catch (erro) { setErroPagamento(erro.message); return }
     if (!formularioPagamento.parcela_id) {
       setErroPagamento(
@@ -1440,13 +1447,14 @@ function App() {
       setSalvandoPagamento(true)
       setErroPagamento('')
 
+      if (intencaoPagamentoRef.current?.vendaId !== vendaSelecionada.venda.id) throw new Error('Reabra o formulario da venda correta antes de enviar o pagamento.')
       await enviarOperacaoFinanceira(apiBase, 'pagamento', {
         venda_id: vendaSelecionada.venda.id,
         parcela_id: Number(formularioPagamento.parcela_id),
         valor: valorPagamento,
         data_pagamento: formularioPagamento.data_pagamento,
         forma_pagamento: formularioPagamento.forma_pagamento,
-      })
+      }, intencaoPagamentoRef.current)
 
       pagamentoConfirmado = true
       setMostrarFormularioPagamento(false)
@@ -5453,14 +5461,16 @@ function App() {
 
                   )}
 
+                  {recuperacaoPagamento.erro && <p role="alert">{recuperacaoPagamento.erro}</p>}
                   {(Number(
                     vendaSelecionada
                       .venda
                       .saldo
-                  ) > 0 || pagamentoPendenteNaVenda(vendaSelecionada.venda.id)) && (
+                  ) > 0 || recuperacaoPagamento.carregando || recuperacaoPagamento.erro || pagamentoPendenteNaVenda(vendaSelecionada.venda.id)) && (
 
                     <button
                       type="button"
+                      disabled={recuperacaoPagamento.carregando}
                       onClick={
                         abrirFormularioPagamento
                       }
@@ -5489,7 +5499,7 @@ function App() {
                           '20px',
                       }}
                     >
-                      ＋ Registrar pagamento
+                      ＋ {recuperacaoPagamento.carregando ? 'Verificando recuperacao...' : pagamentoPendenteNaVenda(vendaSelecionada.venda.id) ? 'Recuperar pagamento pendente' : Number(vendaSelecionada.venda.saldo) <= 0 ? 'Verificar recuperacao financeira' : 'Registrar pagamento'}
                     </button>
 
                   )}

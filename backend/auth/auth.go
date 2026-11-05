@@ -58,11 +58,7 @@ func Cadastro(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		responderErro(
-			w,
-			http.StatusForbidden,
-			"Cadastro público desativado. Solicite acesso ao administrador.",
-		)
+		ResponderErroAutenticacao(w, http.StatusForbidden, "cadastro_desativado", "Cadastro público desativado. Solicite acesso ao administrador.")
 	}
 }
 func Login(db *sql.DB) http.HandlerFunc {
@@ -113,7 +109,7 @@ func Login(db *sql.DB) http.HandlerFunc {
 
 		if err == sql.ErrNoRows {
 			_ = bcrypt.CompareHashAndPassword([]byte(hashFicticio), []byte(req.Senha))
-			responderErro(w, http.StatusUnauthorized, "E-mail ou senha inválidos.")
+			ResponderErroAutenticacao(w, http.StatusUnauthorized, "credenciais_invalidas", "E-mail ou senha inválidos.")
 			return
 		}
 
@@ -123,12 +119,12 @@ func Login(db *sql.DB) http.HandlerFunc {
 		}
 
 		if err := bcrypt.CompareHashAndPassword([]byte(senhaHash), []byte(req.Senha)); err != nil {
-			responderErro(w, http.StatusUnauthorized, "E-mail ou senha inválidos.")
+			ResponderErroAutenticacao(w, http.StatusUnauthorized, "credenciais_invalidas", "E-mail ou senha inválidos.")
 			return
 		}
 
 		if !usuario.Ativo {
-			responderErro(w, http.StatusForbidden, "Esta conta está bloqueada. Entre em contato com o suporte.")
+			ResponderErroAutenticacao(w, http.StatusForbidden, "conta_bloqueada", "Esta conta está bloqueada. Entre em contato com o suporte.")
 			return
 		}
 
@@ -179,7 +175,7 @@ func Me(db *sql.DB) http.HandlerFunc {
 		}
 
 		if !usuario.Ativo {
-			responderErro(w, http.StatusForbidden, "Esta conta está bloqueada.")
+			ResponderErroAutenticacao(w, http.StatusForbidden, "conta_bloqueada", "Esta conta está bloqueada.")
 			return
 		}
 
@@ -267,7 +263,7 @@ func AuthMiddlewareComDB(db *sql.DB, next http.Handler) http.Handler {
 		}
 
 		if !ativo {
-			responderErro(w, http.StatusForbidden, "Esta conta está bloqueada.")
+			ResponderErroAutenticacao(w, http.StatusForbidden, "conta_bloqueada", "Esta conta está bloqueada.")
 			return
 		}
 
@@ -321,12 +317,7 @@ func AdminMiddleware(db *sql.DB, next http.Handler) http.Handler {
 		}
 
 		if !ativo {
-			responderErro(w, http.StatusForbidden, "Esta conta está bloqueada.")
-			return
-		}
-
-		if perfil != "admin" {
-			responderErro(w, http.StatusForbidden, "Acesso restrito ao administrador.")
+			ResponderErroAutenticacao(w, http.StatusForbidden, "conta_bloqueada", "Esta conta está bloqueada.")
 			return
 		}
 
@@ -337,6 +328,12 @@ func AdminMiddleware(db *sql.DB, next http.Handler) http.Handler {
 		}
 		if !valida {
 			responderErro(w, 401, "Sessao invalida ou revogada.")
+			return
+		}
+		if perfil != "admin" {
+			responderJSON(w, http.StatusForbidden, map[string]any{
+				"mensagem": "Acesso restrito ao administrador.", "codigo": "permissao_insuficiente", "sessao_validada": true,
+			})
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -378,9 +375,15 @@ func emailValido(email string) bool {
 }
 
 func responderErro(w http.ResponseWriter, status int, mensagem string) {
-	responderJSON(w, status, map[string]string{
-		"mensagem": mensagem,
-	})
+	if status == http.StatusUnauthorized {
+		ResponderErroAutenticacao(w, status, "sessao_invalida", mensagem)
+		return
+	}
+	if status == http.StatusForbidden {
+		ResponderErroAutenticacao(w, status, "acesso_negado", mensagem)
+		return
+	}
+	responderJSON(w, status, map[string]string{"mensagem": mensagem})
 }
 
 func responderJSON(w http.ResponseWriter, status int, valor interface{}) {
@@ -405,3 +408,8 @@ func TokenAindaValido(r *http.Request) bool {
 
 // Hash de uma senha sintetica, usado apenas para igualar trabalho em email inexistente.
 const hashFicticio = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+
+// ResponderErroAutenticacao never asserts that a session was validated.
+func ResponderErroAutenticacao(w http.ResponseWriter, status int, codigo, mensagem string) {
+	responderJSON(w, status, map[string]string{"codigo": codigo, "mensagem": mensagem})
+}

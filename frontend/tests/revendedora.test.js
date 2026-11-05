@@ -84,3 +84,45 @@ test('JWT expirado na troca de senha ainda encerra a sessao',async()=>{
  await assert.rejects(fetchAutenticado('http://localhost:8082/minha-conta/senha',{method:'PUT'}))
  assert.equal(encerramentos(),1);assert.equal(sessionStorage.getItem('quitai_token'),null)
 })
+
+test('403 de permissao com sessao validada preserva conta e corpo, sem conceder acesso',async()=>{
+ for(const perfil of ['admin','revendedora']){
+  const encerramentos=ambiente();sessionStorage.setItem('quitai_token','fixture');sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,perfil}))
+  localStorage.setItem('quitai_financeiro_pendente:fixture','pendencia-preservada')
+  globalThis.fetch=async()=>new Response(JSON.stringify({codigo:'permissao_insuficiente',sessao_validada:true,mensagem:'Acesso restrito ao administrador.'}),{status:403})
+  const resposta=await fetchAutenticado('/admin/contas')
+  assert.equal(resposta.ok,false);assert.equal(resposta.status,403);assert.equal((await resposta.json()).codigo,'permissao_insuficiente')
+  assert.equal(sessionStorage.getItem('quitai_token'),'fixture');assert.equal(encerramentos(),0)
+ }
+})
+
+test('bloqueio, origem negada e 403 ambiguo nao declaram sessao valida nem apagam pendencias',async()=>{
+ for(const body of [{codigo:'conta_bloqueada'},{codigo:'origem_nao_permitida'},{codigo:'permissao_insuficiente'},{codigo:'desconhecido',sessao_validada:true},{},null,'texto legado']){
+  const encerramentos=ambiente();sessionStorage.setItem('quitai_token','fixture')
+  localStorage.setItem('quitai_financeiro_pendente:fixture','pendencia-preservada')
+  globalThis.fetch=async()=>new Response(typeof body==='string'?body:JSON.stringify(body),{status:403})
+  await assert.rejects(fetchAutenticado('/admin/contas'))
+  assert.equal(sessionStorage.getItem('quitai_token'),null);assert.equal(encerramentos(),1)
+  assert.equal(localStorage.getItem('quitai_financeiro_pendente:fixture'),'pendencia-preservada')
+ }
+})
+
+test('401 estruturado sempre encerra sessao exceto senha atual incorreta no perfil',async()=>{
+ for(const codigo of ['sessao_invalida','permissao_insuficiente','senha_atual_incorreta']){
+  const encerramentos=ambiente();sessionStorage.setItem('quitai_token','fixture')
+  globalThis.fetch=async()=>new Response(JSON.stringify({codigo,sessao_validada:true}),{status:401})
+  await assert.rejects(fetchAutenticado('/clientes/listar'));assert.equal(encerramentos(),1)
+ }
+ const encerramentos=ambiente();sessionStorage.setItem('quitai_token','fixture')
+ globalThis.fetch=async()=>new Response(JSON.stringify({codigo:'senha_atual_incorreta'}),{status:401})
+ assert.equal((await fetchAutenticado('/admin/minha-conta/senha')).status,401);assert.equal(encerramentos(),0)
+})
+
+test('troca de conta durante leitura assincrona do erro nao encerra a conta nova',async()=>{
+ const encerramentos=ambiente();sessionStorage.setItem('quitai_token','fixture-A')
+ globalThis.fetch=async()=>({status:403,clone:()=>({json:async()=>{
+  sessionStorage.setItem('quitai_token','fixture-B');return {codigo:'conta_bloqueada'}
+ }})})
+ await assert.rejects(fetchAutenticado('/admin/contas'),{name:'AbortError'})
+ assert.equal(sessionStorage.getItem('quitai_token'),'fixture-B');assert.equal(encerramentos(),0)
+})

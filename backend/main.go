@@ -34,7 +34,7 @@ func cors(next http.Handler) http.Handler {
 
 		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 			if !permitida {
-				http.Error(w, "Origem não permitida", http.StatusForbidden)
+				auth.ResponderErroAutenticacao(w, http.StatusForbidden, "origem_nao_permitida", "Origem não permitida")
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
@@ -115,11 +115,7 @@ func main() {
 
 	// Cadastro público desativado.
 	http.HandleFunc("/auth/cadastro", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(
-			w,
-			"Cadastro público desativado. Entre em contato com o administrador.",
-			http.StatusForbidden,
-		)
+		auth.ResponderErroAutenticacao(w, http.StatusForbidden, "cadastro_desativado", "Cadastro público desativado. Entre em contato com o administrador.")
 	})
 
 	http.HandleFunc("/auth/login", auth.Login(db))
@@ -164,7 +160,7 @@ func main() {
 
 	// Login Google desativado.
 	http.HandleFunc("/auth/google", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "Login com Google desativado.", http.StatusForbidden)
+		auth.ResponderErroAutenticacao(w, http.StatusForbidden, "autenticacao_desativada", "Login com Google desativado.")
 	})
 
 	// GESTOR ADMINISTRATIVO - SOMENTE ADMINISTRADOR

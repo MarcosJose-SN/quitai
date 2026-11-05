@@ -32,11 +32,13 @@ export async function fetchAutenticado(url, options = {}) {
   const resposta = await fetch(url, { ...options, headers })
   if (obterToken() !== token) throw new DOMException('Sessao alterada.', 'AbortError')
   const caminho = new URL(url, window.location.origin).pathname
-  if (resposta.status === 401 && ['/minha-conta', '/minha-conta/senha', '/admin/minha-conta', '/admin/minha-conta/senha'].includes(caminho)) {
-    const erro = await resposta.clone().json().catch(() => ({}))
-    if (erro.codigo === 'senha_atual_incorreta' || erro.mensagem === 'Senha atual incorreta.') return resposta
-  }
   if (resposta.status === 401 || resposta.status === 403) {
+    const erro = await resposta.clone().json().catch(() => ({}))
+    // Parsing the body is asynchronous: a late denial must not clear a new login.
+    if (obterToken() !== token) throw new DOMException('Sessao alterada.', 'AbortError')
+    const perfilSenha = ['/minha-conta', '/minha-conta/senha', '/admin/minha-conta', '/admin/minha-conta/senha'].includes(caminho)
+    if (resposta.status === 401 && perfilSenha && (erro?.codigo === 'senha_atual_incorreta' || (!erro?.codigo && erro?.mensagem === 'Senha atual incorreta.'))) return resposta
+    if (resposta.status === 403 && token && erro?.codigo === 'permissao_insuficiente' && erro?.sessao_validada === true) return resposta
     limparSessao()
     window.dispatchEvent(new Event('quitai:sessao-encerrada'))
     throw new Error('Sua sessão expirou ou o acesso foi bloqueado. Entre novamente.')
@@ -49,11 +51,13 @@ export function exigirNovoLogin() {
   window.dispatchEvent(new Event('quitai:sessao-encerrada'))
 }
 export async function encerrarSessaoServidor(api) {
-  if (!obterToken()) { exigirNovoLogin(); return }
+  const token = obterToken()
+  if (!token) { exigirNovoLogin(); return }
   const controle = new AbortController()
   const timer = setTimeout(() => controle.abort(), 10000)
   try {
-    const resposta = await fetch(`${api}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${obterToken()}` }, signal: controle.signal })
+    const resposta = await fetch(`${api}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, signal: controle.signal })
+    if (obterToken() !== token) throw new DOMException('Sessao alterada.', 'AbortError')
     if (!resposta.ok && resposta.status !== 401) throw new Error('Nao foi possivel encerrar a sessao no servidor. Tente novamente.')
     exigirNovoLogin()
   } finally { clearTimeout(timer) }

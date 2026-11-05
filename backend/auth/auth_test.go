@@ -54,6 +54,7 @@ func TestAdminMiddlewareRejeitaRevendedora(t *testing.T) {
 				AddRow("revendedora", true),
 		)
 
+	mock.ExpectQuery("SELECT versao_sessao").WillReturnRows(sqlmock.NewRows([]string{"valida"}).AddRow(true))
 	proximo := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("uma revendedora não deveria acessar a rota administrativa")
 	})
