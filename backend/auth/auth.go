@@ -19,11 +19,12 @@ import (
 )
 
 type UsuarioResponse struct {
-	ID     int    `json:"id"`
-	Nome   string `json:"nome"`
-	Email  string `json:"email"`
-	Perfil string `json:"perfil"`
-	Ativo  bool   `json:"ativo"`
+	ID                 int    `json:"id"`
+	Nome               string `json:"nome"`
+	Email              string `json:"email"`
+	Perfil             string `json:"perfil"`
+	Ativo              bool   `json:"ativo"`
+	AmbienteFinanceiro string `json:"ambiente_financeiro"`
 }
 
 type cadastroRequest struct {
@@ -134,6 +135,7 @@ func Login(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		usuario.AmbienteFinanceiro = AmbienteFinanceiro()
 		responderJSON(w, http.StatusOK, authResponse{
 			Token:   token,
 			Usuario: usuario,
@@ -179,6 +181,7 @@ func Me(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		usuario.AmbienteFinanceiro = AmbienteFinanceiro()
 		responderJSON(w, http.StatusOK, usuario)
 	}
 }

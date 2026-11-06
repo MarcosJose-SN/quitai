@@ -136,6 +136,7 @@ func (h *bancoFinanceiroTeste) request(method, path, chave string, pedido any, u
 	req, _ := http.NewRequest(method, h.servidor.URL+path, bytes.NewReader(b))
 	req.Header.Set("Authorization", "Bearer "+h.tokens[usuario])
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Financial-Environment", "fixture-env-A")
 	if chave != "" {
 		req.Header.Set("Idempotency-Key", chave)
 	}
@@ -148,6 +149,25 @@ func (h *bancoFinanceiroTeste) request(method, path, chave string, pedido any, u
 	corpo, _ := io.ReadAll(res.Body)
 	return respostaFT{res.StatusCode, corpo}
 }
+
+// Exercita o helper e o handler reais, sem PostgreSQL: a chave ausente
+// deve ser rejeitada antes de qualquer acesso ao banco (deliberadamente nil).
+func TestFixtureFinanceiroSemChaveMantemAmbiente(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
+	t.Setenv("QUITAIA_JWT_SECRET", chaveTesteFoto)
+	servidor := httptest.NewServer(auth.AuthMiddleware(CriarVendaCompleta(nil)))
+	defer servidor.Close()
+	h := bancoFinanceiroTeste{
+		servidor: servidor,
+		tokens:   map[int]string{1: tokenTesteFoto(t, 1)},
+		t:        t,
+	}
+	resposta := h.request("POST", "/vendas/completa", "", pedidoFT(), 1)
+	if resposta.codigo != http.StatusBadRequest || !strings.Contains(string(resposta.corpo), "Idempotency-Key") {
+		t.Fatalf("esperado HTTP 400 por chave ausente, recebido %d: %s", resposta.codigo, resposta.corpo)
+	}
+}
+
 func (h *bancoFinanceiroTeste) scalar(query string, args ...any) int64 {
 	h.t.Helper()
 	var texto string
@@ -195,6 +215,7 @@ func (h *bancoFinanceiroTeste) falha(tabela, evento string, deferrable bool) {
 	}
 }
 func TestFinanceiroAtomicidadeReal(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	for _, c := range []struct {
 		nome, tabela, evento string
 		deferida             bool
@@ -220,6 +241,7 @@ func TestFinanceiroAtomicidadeReal(t *testing.T) {
 	}
 }
 func TestFinanceiroRepeticaoNormalizada(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	p := pedidoFT()
 	a := h.request("POST", "/vendas/completa", "repeticao-venda-chave", p, 1)
@@ -238,10 +260,12 @@ func TestFinanceiroRepeticaoNormalizada(t *testing.T) {
 	}
 }
 func TestFinanceiroPerdaResposta(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	b, _ := json.Marshal(pedidoFT())
 	req, _ := http.NewRequest("POST", h.servidor.URL+"/vendas/completa", bytes.NewReader(b))
 	req.Header.Set("Authorization", "Bearer "+h.tokens[1])
+	req.Header.Set("X-Financial-Environment", "fixture-env-A")
 	req.Header.Set("Idempotency-Key", "resposta-perdida-chave")
 	req.Header.Set("X-Fixture-Perder-Resposta", "sim")
 	res, err := h.servidor.Client().Do(req)
@@ -255,6 +279,7 @@ func TestFinanceiroPerdaResposta(t *testing.T) {
 	}
 }
 func TestFinanceiroConcorrenciaMesmaChave(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	var wg sync.WaitGroup
 	res := make(chan respostaFT, 16)
@@ -287,6 +312,7 @@ func TestFinanceiroConcorrenciaMesmaChave(t *testing.T) {
 	}
 }
 func TestFinanceiroDisputaEstoque(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	p := pedidoFT()
 	p.Itens = []itemVendaCompleta{{1, 7}}
@@ -314,6 +340,7 @@ func TestFinanceiroDisputaEstoque(t *testing.T) {
 	}
 }
 func TestFinanceiroCentavosCalendario(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	id := h.venda(pedidoFT(), "centavos-calendario-chave")
 	rows, err := h.db.Query("SELECT valor::text,vencimento::text FROM parcelas WHERE venda_id=$1 ORDER BY numero_parcela", id)
@@ -337,6 +364,7 @@ func TestFinanceiroCentavosCalendario(t *testing.T) {
 	}
 }
 func TestFinanceiroPagamentoIdempotente(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	id := h.venda(pedidoFT(), "venda-pagamento-chave")
 	p := h.pagamento(id, 7)
@@ -371,6 +399,7 @@ func TestFinanceiroPagamentoIdempotente(t *testing.T) {
 	}
 }
 func TestFinanceiroRollbackPagamento(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	for _, c := range []struct {
 		nome, tabela string
 		deferida     bool
@@ -398,6 +427,7 @@ func TestFinanceiroRollbackPagamento(t *testing.T) {
 	}
 }
 func TestFinanceiroPagamentosConcorrentes(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	for _, mesma := range []bool{true, false} {
 		t.Run(fmt.Sprintf("mesma_chave_%t", mesma), func(t *testing.T) {
 			h := novoBancoFinanceiroTeste(t)
@@ -437,6 +467,7 @@ func TestFinanceiroPagamentosConcorrentes(t *testing.T) {
 	}
 }
 func TestFinanceiroIsolamento(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	a := h.request("POST", "/vendas/completa", "mesma-chave-duas-contas", pedidoFT(), 1)
 	if a.codigo != 201 {
@@ -453,6 +484,7 @@ func TestFinanceiroIsolamento(t *testing.T) {
 	}
 }
 func TestFinanceiroProtocoloAntigo(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	for _, path := range []string{"/vendas", "/vendas/itens"} {
 		if h.request("POST", path, "", map[string]int{}, 1).codigo != 410 {
@@ -464,6 +496,7 @@ func TestFinanceiroProtocoloAntigo(t *testing.T) {
 	}
 }
 func TestFinanceiroValidacaoIntegral(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	for _, caso := range []string{"sem_chave", "produto_alheio", "duplicado", "parcela_zero", "excesso_valor"} {
 		t.Run(caso, func(t *testing.T) {
 			h := novoBancoFinanceiroTeste(t)
@@ -492,6 +525,7 @@ func TestFinanceiroValidacaoIntegral(t *testing.T) {
 	}
 }
 func TestFinanceiroSnapshotConcorrente(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	id := h.venda(pedidoFT(), "snapshot-venda-chave")
 	p := h.pagamento(id, 0.01)
@@ -550,6 +584,7 @@ func TestFinanceiroSnapshotConcorrente(t *testing.T) {
 	<-done
 }
 func TestFinanceiroProximoVencimento(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	p := pedidoFT()
 	primeiro := time.Now().AddDate(0, 0, -1)
@@ -588,6 +623,7 @@ func TestFinanceiroProximoVencimento(t *testing.T) {
 }
 
 func TestFinanceiroOrdensOpostas(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	p := pedidoFT()
 	p.Itens = []itemVendaCompleta{{1, 2}, {2, 2}}
@@ -617,12 +653,14 @@ func TestFinanceiroOrdensOpostas(t *testing.T) {
 	}
 }
 func TestFinanceiroPerdaRespostaPagamento(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	id := h.venda(pedidoFT(), "venda-resposta-pagamento")
 	p := h.pagamento(id, 20.05)
 	b, _ := json.Marshal(p)
 	req, _ := http.NewRequest("POST", h.servidor.URL+"/pagamentos", bytes.NewReader(b))
 	req.Header.Set("Authorization", "Bearer "+h.tokens[1])
+	req.Header.Set("X-Financial-Environment", "fixture-env-A")
 	req.Header.Set("Idempotency-Key", "perda-pagamento-chave")
 	req.Header.Set("X-Fixture-Perder-Resposta", "sim")
 	res, err := h.servidor.Client().Do(req)
@@ -637,6 +675,7 @@ func TestFinanceiroPerdaRespostaPagamento(t *testing.T) {
 }
 
 func TestFinanceiroSessaoRevogadaAposCommit(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	for _, tipo := range []string{"venda", "pagamento"} {
 		t.Run(tipo, func(t *testing.T) {
 			h := novoBancoFinanceiroTeste(t)
@@ -650,6 +689,7 @@ func TestFinanceiroSessaoRevogadaAposCommit(t *testing.T) {
 			body, _ := json.Marshal(pedido)
 			req, _ := http.NewRequest("POST", h.servidor.URL+path, bytes.NewReader(body))
 			req.Header.Set("Authorization", "Bearer "+h.tokens[1])
+			req.Header.Set("X-Financial-Environment", "fixture-env-A")
 			req.Header.Set("Idempotency-Key", "chave-expiracao-apos-commit")
 			req.Header.Set("X-Fixture-Perder-Resposta", "sim")
 			res, err := http.DefaultClient.Do(req)
@@ -682,6 +722,7 @@ func TestFinanceiroSessaoRevogadaAposCommit(t *testing.T) {
 }
 
 func TestFinanceiroContaBloqueadaNaoLeNemRepeteOperacao(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	h := novoBancoFinanceiroTeste(t)
 	id := h.venda(pedidoFT(), "venda-antes-bloqueio")
 	if _, err := h.db.Exec(`UPDATE usuarios SET ativo=false WHERE id=1`); err != nil {

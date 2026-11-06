@@ -14,6 +14,7 @@ import (
 )
 
 func TestExcluirVendaNaoPermiteExclusaoDeOutroUsuario(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
@@ -61,6 +62,7 @@ func TestExcluirVendaNaoPermiteExclusaoDeOutroUsuario(t *testing.T) {
 	mock.ExpectRollback()
 
 	req := httptest.NewRequest(http.MethodDelete, "/vendas/9", nil)
+	req.Header.Set("X-Financial-Environment", "fixture-env-A")
 	req.Header.Set("Authorization", "Bearer "+tokenString)
 
 	rec := httptest.NewRecorder()
@@ -78,5 +80,44 @@ func TestExcluirVendaNaoPermiteExclusaoDeOutroUsuario(t *testing.T) {
 
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestExcluirVendaAmbienteValidoSemIdempotencyKey(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
+	t.Setenv("QUITAIA_JWT_SECRET", chaveTesteFoto)
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id FROM vendas").WithArgs(9, 2).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(9))
+	mock.ExpectQuery("SELECT EXISTS").WithArgs(9).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectExec("UPDATE produtos").WithArgs(9, 2).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("DELETE FROM parcelas").WithArgs(9).WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("DELETE FROM venda_itens").WithArgs(9).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("DELETE FROM vendas").WithArgs(9, 2).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	r := httptest.NewRequest("DELETE", "/vendas/9", nil)
+	r.Header.Set("Authorization", "Bearer "+tokenTesteFoto(t, 2))
+	r.Header.Set("X-Financial-Environment", "fixture-env-A")
+	w := httptest.NewRecorder()
+	auth.AuthMiddleware(ExcluirVenda(db)).ServeHTTP(w, r)
+	if w.Code != 204 {
+		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	}
+	if err = mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+func TestExcluirVendaAmbienteNaoSubstituiAutenticacao(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
+	r := httptest.NewRequest("DELETE", "/vendas/9", nil)
+	r.Header.Set("X-Financial-Environment", "fixture-env-A")
+	w := httptest.NewRecorder()
+	auth.AuthMiddleware(ExcluirVenda(nil)).ServeHTTP(w, r)
+	if w.Code != 401 {
+		t.Fatalf("status=%d", w.Code)
 	}
 }

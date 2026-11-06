@@ -9,7 +9,7 @@ async function enviarOperacaoFinanceira(api,tipo,pedido) {
  return enviarComIntencao(api,tipo,pedido,intencao)
 }
 function storage(){const dados=new Map();return {getItem:k=>dados.get(k)??null,setItem:(k,v)=>dados.set(k,String(v)),removeItem:k=>dados.delete(k)}}
-function preparar(id=1){instalarWebLocks();globalThis.localStorage=storage();globalThis.sessionStorage=storage();globalThis.window={location:{origin:'http://localhost:5174'},dispatchEvent:()=>{}};sessionStorage.setItem('quitai_token','fixture-sem-validade');sessionStorage.setItem('quitai_usuario',JSON.stringify({id}))}
+function preparar(id=1){instalarWebLocks();globalThis.localStorage=storage();globalThis.sessionStorage=storage();globalThis.window={location:{origin:'http://localhost:5174'},dispatchEvent:()=>{}};sessionStorage.setItem('quitai_token','fixture-sem-validade');sessionStorage.setItem('quitai_usuario',JSON.stringify({id,ambiente_financeiro:'fixture-env-A'}))}
 const sucesso=(tipo='venda_completa')=>new Response(JSON.stringify(tipo==='pagamento'?{pagamento_id:9}:{id:7}),{status:201})
 test('perda de rede conserva pedido e chave; retry usa a mesma chave e limpa somente apos sucesso',async()=>{
  preparar();let primeira;globalThis.fetch=async(url,op)=>{assert.equal(url,api+'/vendas/completa');primeira=op.headers.get('Idempotency-Key');throw new TypeError('rede fixture')}
@@ -46,8 +46,8 @@ test('conflito de hash preserva pedido original e chave',async()=>{
 test('pendencias sao separadas por conta, API e tipo',async()=>{
  preparar();globalThis.fetch=async()=>{throw new TypeError('fixture')};await assert.rejects(enviarOperacaoFinanceira(api,'venda_completa',pedido))
  assert.equal((await obterOperacaoPendente('http://localhost:9082','venda_completa')),null);assert.equal((await obterOperacaoPendente(api,'pagamento')),null)
- sessionStorage.setItem('quitai_usuario',JSON.stringify({id:2}));assert.equal((await obterOperacaoPendente(api,'venda_completa')),null)
- sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1}));assert.deepEqual((await obterOperacaoPendente(api,'venda_completa')).pedido,pedido)
+ sessionStorage.setItem('quitai_usuario',JSON.stringify({id:2,ambiente_financeiro:'fixture-env-A'}));assert.equal((await obterOperacaoPendente(api,'venda_completa')),null)
+ sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-A'}));assert.deepEqual((await obterOperacaoPendente(api,'venda_completa')).pedido,pedido)
 })
 test('resposta 2xx incompleta nao libera outra chave nem declara sucesso',async()=>{
  preparar();globalThis.fetch=async()=>new Response('{}',{status:201})

@@ -54,19 +54,22 @@ function instalarIndexedDB() {
           close() {},
           transaction() {
             const escrituras = new Map()
-            let abortada = false
+            let abortada = false, concluida = false
             const tx = {
               abort() { abortada = true; queueMicrotask(() => tx.onabort?.()) },
               objectStore() { return {
                 put(value, key) { escrituras.set(key, structuredClone(value)); return {} },
-                get(key) {
+                getAllKeys() { return this.get(undefined, 'keys') },
+                getAll() { return this.get(undefined, 'values') },
+                get(key, mode) {
                   const r = {}
                   queueMicrotask(() => {
                     if (abortada) return
-                    r.result = registros.has(key) ? structuredClone(registros.get(key)) : undefined
+                    r.result = mode === 'keys' ? [...registros.keys()] : mode === 'values' ? structuredClone([...registros.values()]) : registros.has(key) ? structuredClone(registros.get(key)) : undefined
                     r.onsuccess?.()
                     queueMicrotask(() => {
-                      if (abortada) return
+                      if (abortada || concluida) return
+                      concluida = true
                       const modo = [...escrituras.values()].map(v => controle.falharCommit?.(v)).find(Boolean)
                       if (modo) {
                         tx.error = new DOMException('simulated async commit failure', 'UnknownError')

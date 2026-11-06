@@ -1,5 +1,5 @@
 import { useRecuperacaoFinanceira } from './services/useRecuperacaoFinanceira.js'
-import { encerrarSessaoServidor, exigirNovoLogin } from './services/sessaoRevendedora.js'
+import { encerrarSessaoServidor, exigirNovoLogin, capturarContextoExclusao, validarContextoExclusao, excluirVendaNoAmbiente } from './services/sessaoRevendedora.js'
 import { enviarOperacaoFinanceira, obterOperacaoPendente, prepararIntencaoFinanceira } from './services/operacoesFinanceiras'
 import { conectarEventosSuporte } from './services/suporteEventos'
 import { useEffect, useRef, useState } from 'react'
@@ -383,7 +383,10 @@ function App() {
       setNomeConta(dados.nome)
       setEmailConta(dados.email)
       for (const storage of [localStorage, sessionStorage]) {
-        if (storage.getItem('quitai_usuario')) storage.setItem('quitai_usuario', JSON.stringify(dados))
+        if (storage.getItem('quitai_usuario')) {
+          const anterior = JSON.parse(storage.getItem('quitai_usuario'))
+          storage.setItem('quitai_usuario', JSON.stringify({ ...dados, ambiente_financeiro: anterior?.id === dados.id ? anterior.ambiente_financeiro : undefined }))
+        }
       }
       setEditandoConta(false)
       setMensagemConta('Dados atualizados com sucesso.')
@@ -530,6 +533,8 @@ function App() {
     useState(false)
   const [erroDetalhesVenda, setErroDetalhesVenda] = useState('')
   const [vendaParaExcluir, setVendaParaExcluir] = useState(null)
+  const contextoExclusaoRef = useRef(null)
+  const contextoDetalhesVendaRef = useRef(null)
   const [excluindoVenda, setExcluindoVenda] = useState(false)
   const [erroExclusaoVenda, setErroExclusaoVenda] = useState('')
 
@@ -1187,6 +1192,9 @@ function App() {
       setCarregandoDetalhesVenda(true)
       setErroDetalhesVenda('')
       setVendaSelecionada(null)
+      contextoDetalhesVendaRef.current = null
+      let contexto = null
+      try { contexto = capturarContextoExclusao(apiBase, venda.id) } catch { /* Leitura continua permitida; exclusao permanece bloqueada. */ }
 
       const resposta = await fetchAutenticado(
         `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/${venda.id}`
@@ -1204,6 +1212,8 @@ function App() {
 
       const dados = await resposta.json()
       if (pedido !== pedidoVendaRef.current) return
+      if (contexto) validarContextoExclusao(contexto)
+      contextoDetalhesVendaRef.current = contexto
       setVendaSelecionada(dados)
 
       const respostaPagamentos = await fetchAutenticado(
@@ -1213,6 +1223,7 @@ function App() {
       if (respostaPagamentos.ok) {
         const dadosPagamentos = await respostaPagamentos.json()
         if (pedido !== pedidoVendaRef.current) return
+        if (contexto) validarContextoExclusao(contexto)
         setPagamentosVenda(dadosPagamentos)
       } else {
         throw new Error('Não foi possível carregar o histórico de pagamentos.')
@@ -1240,6 +1251,13 @@ function App() {
 
   function abrirConfirmacaoExcluirVenda() {
     if (!vendaSelecionada?.venda) return
+    try {
+      const contexto = contextoDetalhesVendaRef.current
+      validarContextoExclusao(contexto)
+      if (contexto.vendaId !== vendaSelecionada.venda.id) throw new Error('Reabra os detalhes da venda antes de excluir.')
+      contextoExclusaoRef.current = contexto
+    }
+    catch (erro) { setErroDetalhesVenda(erro.message); return }
     setErroExclusaoVenda('')
     setVendaParaExcluir(vendaSelecionada.venda)
   }
@@ -1247,20 +1265,19 @@ function App() {
   function fecharConfirmacaoExcluirVenda() {
     if (excluindoVenda) return
     setVendaParaExcluir(null)
+    contextoExclusaoRef.current = null
     setErroExclusaoVenda('')
   }
 
   async function confirmarExclusaoVenda() {
     if (!vendaParaExcluir) return
 
+    const contexto = contextoExclusaoRef.current
     try {
       setExcluindoVenda(true)
       setErroExclusaoVenda('')
-      const resposta = await fetchAutenticado(`${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/${vendaParaExcluir.id}`, { method: 'DELETE' })
-      if (!resposta.ok) {
-        const mensagem = await resposta.text()
-        throw new Error(mensagem || 'Não foi possível excluir esta venda.')
-      }
+      await excluirVendaNoAmbiente(apiBase, vendaParaExcluir.id, contexto)
+      validarContextoExclusao(contexto)
 
       setVendaParaExcluir(null)
       setVendaSelecionada(null)
@@ -1269,10 +1286,12 @@ function App() {
       setTela('vendas')
       await buscarVendas()
     } catch (error) {
+      if (contextoExclusaoRef.current !== contexto) return
+      try { validarContextoExclusao(contexto) } catch (erroContexto) { setVendaParaExcluir(null); setErroDetalhesVenda(erroContexto.message); return }
       console.error('Erro ao excluir venda:', error)
       setErroExclusaoVenda(error?.message || 'Não foi possível excluir esta venda. Nenhuma alteração foi confirmada.')
     } finally {
-      setExcluindoVenda(false)
+      if (contextoExclusaoRef.current === contexto) setExcluindoVenda(false)
     }
   }
 

@@ -24,7 +24,7 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
  const perfil=await mkdtemp(path.join(tmpdir(),'quitai-financeiro-test-'))
  const artefatos=await mkdtemp(path.join(tmpdir(),'quitai-react-test-'))
  await build({root,configFile:false,plugins:[react()],define:{'import.meta.env.VITE_API_URL':JSON.stringify('/api')},build:{outDir:artefatos},logLevel:'silent'})
- const requisicoes=[], efeitos=new Map(), retidas=[]
+ const requisicoes=[], efeitos=new Map(), retidas=[], exclusoes=[]
  let modo='normal', proximoId=1
  function responder(res,dados,status=201){if(!res.destroyed){res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(dados))}}
  const server=http.createServer(async(req,res)=>{
@@ -38,16 +38,24 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
     if(req.url.includes('/eventos')) {res.writeHead(200,{'Content-Type':'text/event-stream'});res.write(': fixture\n\n');return}
     const venda={id:3,cliente_id:1,cliente_nome:'Cliente de teste',data_compra:'2026-01-01',data_vencimento:'2026-01-31',vencimento:'2026-01-31',total:10,valor_pago:10,saldo:0,total_parcelas:1,status:'QUITADO'}
     let dados=[]
-    if(req.url==='/api/auth/me') dados={id:1,nome:'Conta de teste',email:'fixture@example.invalid',perfil:'revendedora',ativo:true}
+    if(req.url==='/api/auth/me') dados={id:1,nome:'Conta de teste',email:'fixture@example.invalid',ambiente_financeiro:'fixture-env-A',perfil:'revendedora',ativo:true}
     if(req.url==='/api/sistema/publico') dados={manutencao:false,mensagem_manutencao:'',avisos:[]}
     if(req.url==='/api/vendas/listar') dados=[venda]
     if(req.url==='/api/vendas/3') dados={venda,itens:[{id:1,produto_nome:'Produto de teste',quantidade:1,preco_unitario:10,subtotal:10}],parcelas:[{id:4,venda_id:3,numero_parcela:1,valor:10,valor_pago:10,vencimento:'2026-01-31',status:'QUITADO'}]}
     responder(res,dados,200);return
    }
+   if(req.method==='DELETE' && req.url==='/api/vendas/3') {
+    const registro={ambiente:req.headers['x-financial-environment'],authorization:req.headers.authorization,chave:req.headers['idempotency-key']}
+    exclusoes.push(registro)
+    if(registro.ambiente!=='fixture-env-A'){responder(res,{mensagem:'Ambiente divergente'},409);return}
+    if(modo==='reter-exclusao'){retidas.push({res,registro});return}
+    res.writeHead(204);res.end();return
+   }
    if(req.method!=='POST' || !['/api/vendas/completa','/api/pagamentos'].includes(req.url)){res.writeHead(404);res.end();return}
    assert.equal(req.headers.authorization,'Bearer fixture-browser')
+   assert.equal(req.headers['x-financial-environment'],'fixture-env-A')
    let body='';for await(const chunk of req)body+=chunk
-   const chave=req.headers['idempotency-key'];const registro={chave,body,url:req.url};requisicoes.push(registro)
+   const chave=req.headers['idempotency-key'];const registro={chave,body,url:req.url,tab:req.headers['x-fixture-tab']};requisicoes.push(registro)
    if(modo==='terminal'){responder(res,{resultado:'nao_confirmado'},400);return}
    if(modo==='decidir'){retidas.push({res,registro});return}
    if(modo==='incompleta'){responder(res,{},201);return}
@@ -56,7 +64,7 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
    if(efeito && efeito.body!==body){responder(res,{resultado:'conflito'},409);return}
    if(!efeito){efeito={body,dados:req.url.endsWith('pagamentos')?{pagamento_id:proximoId++}:{id:proximoId++}};efeitos.set(chave,efeito)}
    if(modo==='perder'){req.socket.destroy();return}
-   if(modo==='reter'){retidas.push({res,dados:efeito.dados});return}
+   if(modo==='reter'){retidas.push({res,registro,dados:efeito.dados});return}
    responder(res,efeito.dados)
   }catch{res.writeHead(500);res.end()}
  })
@@ -81,16 +89,19 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
   const tab={targetId,session:sessionId}
   try { await esperar(async()=>{try{return await avaliar(tab,'Boolean(window.fin)')}catch{return false}}) }
   catch { throw new Error('Fixture de navegador indisponivel: '+JSON.stringify(await avaliar(tab,'({url:location.href,estado:document.readyState,erros:window.fixtureErrors,modulos:performance.getEntriesByType("resource").map(x=>({name:x.name,status:x.responseStatus}))})'))) }
-  await avaliar(tab,`sessionStorage.setItem('quitai_token','fixture-browser');sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1}));window.api=${JSON.stringify(api)};window.tipo='venda_completa';window.pedido={cliente_id:1,itens:[{produto_id:2,quantidade:1}]};true`)
+  await avaliar(tab,`sessionStorage.setItem('quitai_token','fixture-browser');sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-A'}));window.api=${JSON.stringify(api)};window.tipo='venda_completa';window.pedido={cliente_id:1,itens:[{produto_id:2,quantidade:1}]};true`)
+  await avaliar(tab,`window.fetchFixtureOriginal=window.fetch;window.fetch=(url,op={})=>{const headers=new Headers(op.headers);headers.set('X-Fixture-Tab',${JSON.stringify(targetId)});return window.fetchFixtureOriginal(url,{...op,headers})};true`)
   return tab
  }
  async function abrir(tab){return avaliar(tab,'fin.prepararIntencaoFinanceira(api,tipo).then(x=>(window.ticket=x,x))')}
  async function enviar(tab){return avaliar(tab,'fin.enviarOperacaoFinanceira(api,tipo,pedido,ticket).then(dados=>({ok:true,dados}),e=>({ok:false,mensagem:e.message}))')}
- async function iniciar(tab){await avaliar(tab,'window.envio=fin.enviarOperacaoFinanceira(api,tipo,pedido,ticket).then(dados=>({ok:true,dados}),e=>({ok:false,mensagem:e.message}));true')}
+ async function iniciar(tab){
+  await avaliar(tab,`if(!window.fetchFixtureOriginal){window.fetchFixtureOriginal=window.fetch;window.fetch=(url,op={})=>{const headers=new Headers(op.headers);headers.set('X-Fixture-Tab',${JSON.stringify(tab.targetId)});return window.fetchFixtureOriginal(url,{...op,headers})}};true`)
+  await avaliar(tab,'window.envio=fin.enviarOperacaoFinanceira(api,tipo,pedido,ticket).then(dados=>({ok:true,dados}),e=>({ok:false,mensagem:e.message}));true')}
  async function reset(a,b){
   assert.equal(retidas.length,0);modo='normal';requisicoes.length=0;efeitos.clear()
   await avaliar(a,`new Promise((resolve,reject)=>{const r=indexedDB.deleteDatabase('quitai-intencoes-financeiras');r.onsuccess=()=>{localStorage.clear();resolve(true)};r.onerror=()=>reject(new Error('fixture reset'));r.onblocked=()=>reject(new Error('fixture blocked'))})`)
-  for(const tab of [a,b])await avaliar(tab,`window.api=${JSON.stringify(api)};`+"sessionStorage.setItem('quitai_token','fixture-browser');sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1}));window.tipo='venda_completa';window.pedido={cliente_id:1,itens:[{produto_id:2,quantidade:1}]};window.ticket=null;true")
+  for(const tab of [a,b])await avaliar(tab,`window.api=${JSON.stringify(api)};`+"sessionStorage.setItem('quitai_token','fixture-browser');sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-A'}));window.tipo='venda_completa';window.pedido={cliente_id:1,itens:[{produto_id:2,quantidade:1}]};window.ticket=null;true")
  }
  async function iniciarChrome(){
   chrome=spawn(executavel,['--headless=new','--remote-debugging-port=0',`--user-data-dir=${perfil}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-component-update','--disable-sync','--disable-extensions','--no-proxy-server','--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost','about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']})
@@ -108,6 +119,22 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
   const a=await aba(),b=await aba()
   assert.equal(await avaliar(a,'isSecureContext && Boolean(navigator.locks)'),true)
 
+  await t.test('DELETE em Chrome conserva contexto original e descarta resposta de ambiente anterior',async()=>{
+   await reset(a,b);exclusoes.length=0
+   await avaliar(a,"(async()=>{window.sessao=await import('/services/sessaoRevendedora.js');window.ctxExcluir=sessao.capturarContextoExclusao(api,3);return true})()")
+   assert.equal(await avaliar(a,"sessao.excluirVendaNoAmbiente(api,3,ctxExcluir).then(r=>r.status)"),204)
+   assert.equal(exclusoes.length,1);assert.equal(exclusoes[0].ambiente,'fixture-env-A');assert.equal(exclusoes[0].chave,undefined)
+   await avaliar(a,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-B'}));true")
+   await assert.rejects(avaliar(a,"sessao.excluirVendaNoAmbiente(api,3,ctxExcluir)"),/ambiente alterado/)
+   assert.equal(exclusoes.length,1)
+   await avaliar(a,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-A'}));true")
+   modo='reter-exclusao'
+   await avaliar(a,"window.exclusao=sessao.excluirVendaNoAmbiente(api,3,ctxExcluir).then(()=>({ok:true}),e=>({ok:false,mensagem:e.message}));true")
+   await esperar(()=>retidas.length===1)
+   await avaliar(a,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:2,ambiente_financeiro:'fixture-env-A'}));true")
+   const retida=retidas.shift();retida.res.writeHead(204);retida.res.end()
+   assert.equal((await avaliar(a,'window.exclusao')).ok,false)
+  })
   await t.test('mesmo pedido simultaneo compartilha chave e um unico efeito',async()=>{
    await reset(a,b);const [ta,tb]=await Promise.all([abrir(a),abrir(b)]);assert.equal(ta.id,tb.id)
    const [ra,rb]=await Promise.all([enviar(a),enviar(b)]);assert.ok(ra.ok && rb.ok);assert.equal(ra.dados.id,rb.dados.id)
@@ -161,7 +188,7 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
    await avaliar(a,`window.pedido=${segunda.registro.body};true`);assert.ok((await enviar(a)).ok);assert.equal(requisicoes.length,2);assert.equal(efeitos.size,1)
    const nova=await abrir(b);assert.notEqual(nova.id,ta.id)
   })
-  await t.test('nao_confirmada persistida pela versao anterior e importada como pendente',async()=>{
+  await t.test('nao_confirmada legada permanece preservada e bloqueada sem ambiente',async()=>{
    await reset(a,b)
    const original=await avaliar(a,`(async()=>{
     const original={versao:1,id:'intencao-anterior-browser-123',chave:'chave-anterior-browser-123',estado:'nao_confirmada',pedido};
@@ -170,10 +197,9 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
     await store.transacionarIntencao(key,(_r,salvar)=>{salvar(original)});
     localStorage.setItem(key,JSON.stringify(original));return original;
    })()`)
-   const recuperada=await abrir(b);assert.equal(recuperada.id,original.id);assert.equal(recuperada.pendente.chave,original.chave);assert.deepEqual(recuperada.pendente.pedido,original.pedido)
-   await avaliar(b,'window.pedido.cliente_id=99;true');assert.equal((await enviar(b)).ok,false);assert.equal(requisicoes.length,0)
-   await avaliar(b,`window.pedido=${JSON.stringify(original.pedido)};true`);assert.ok((await enviar(b)).ok)
-   assert.equal(requisicoes[0].chave,original.chave);assert.equal(efeitos.size,1)
+   await assert.rejects(abrir(b),/legada/)
+   assert.equal(requisicoes.length,0)
+   assert.equal(await avaliar(a,`JSON.parse(localStorage.getItem('quitai_financeiro_pendente:venda_completa:'+encodeURIComponent(api)+':1')).chave`),original.chave)
   })
   await t.test('negativa e fechamento da outra aba nao provam ausencia de COMMIT remoto',async()=>{
    await reset(a,b);const c=await aba();await Promise.all([abrir(a),abrir(c)])
@@ -201,12 +227,12 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
   })
   await t.test('falha tardia nao rebaixa resultado confirmado por outra aba',async()=>{
    await reset(a,b);await Promise.all([abrir(a),abrir(b)]);modo='reter';await iniciar(a);await iniciar(b);await esperar(()=>retidas.length===2)
-   const [primeira,segunda]=retidas.splice(0);responder(segunda.res,segunda.dados);assert.ok((await avaliar(b,'window.envio')).ok)
+   const respostas=retidas.splice(0);const primeira=respostas.find(x=>x.registro.tab===a.targetId),segunda=respostas.find(x=>x.registro.tab===b.targetId);assert.ok(primeira && segunda);responder(segunda.res,segunda.dados);assert.ok((await avaliar(b,'window.envio')).ok)
    responder(primeira.res,{resultado:'nao_confirmado'},400);assert.ok((await avaliar(a,'window.envio')).ok);assert.equal(efeitos.size,1)
   })
   await t.test('resposta antiga nao modifica a nova intencao explicita',async()=>{
    await reset(a,b);await Promise.all([abrir(a),abrir(b)]);modo='reter';await iniciar(a);await iniciar(b);await esperar(()=>retidas.length===2)
-   const [primeira,segunda]=retidas.splice(0);responder(segunda.res,segunda.dados);assert.ok((await avaliar(b,'window.envio')).ok)
+   const respostas=retidas.splice(0);const primeira=respostas.find(x=>x.registro.tab===a.targetId),segunda=respostas.find(x=>x.registro.tab===b.targetId);assert.ok(primeira && segunda);responder(segunda.res,segunda.dados);assert.ok((await avaliar(b,'window.envio')).ok)
    const nova=await abrir(b);const antes=await avaliar(b,'localStorage.getItem(ticket.escopo)')
    responder(primeira.res,primeira.dados);assert.equal((await avaliar(a,'window.envio')).ok,false)
    assert.equal(await avaliar(b,'localStorage.getItem(ticket.escopo)'),antes);assert.equal((await avaliar(b,'window.ticket')).id,nova.id)
@@ -229,14 +255,26 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
   })
   await t.test('contas, APIs e tipos possuem reservas independentes',async()=>{
    await reset(a,b);const ta=await abrir(a)
-   await avaliar(b,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:2}));true");const tb=await abrir(b);assert.notEqual(ta.escopo,tb.escopo)
-   await avaliar(b,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1}));window.tipo='pagamento';true");const tp=await abrir(b);assert.notEqual(ta.escopo,tp.escopo)
+   await avaliar(b,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:2,ambiente_financeiro:'fixture-env-A'}));true");const tb=await abrir(b);assert.notEqual(ta.escopo,tb.escopo)
+   await avaliar(b,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-A'}));window.tipo='pagamento';true");const tp=await abrir(b);assert.notEqual(ta.escopo,tp.escopo)
    await avaliar(b,"window.tipo='venda_completa';window.api+='/ambiente-isolado';true");const te=await abrir(b);assert.notEqual(ta.escopo,te.escopo)
    await avaliar(b,`window.api=${JSON.stringify(api)};true`)
   })
   await t.test('nova operacao explicita com mesmos dados recebe nova chave',async()=>{
    await reset(a,b);const ta=await abrir(a);assert.ok((await enviar(a)).ok);const chave=requisicoes[0].chave
    const tb=await abrir(a);assert.notEqual(ta.id,tb.id);assert.ok((await enviar(a)).ok);assert.notEqual(requisicoes[1].chave,chave);assert.equal(efeitos.size,2)
+  })
+  await t.test('ambiente trocado em outra aba bloqueia reserva e resposta atrasada sem perder chave',async()=>{
+   await reset(a,b);const ta=await abrir(a);modo='decidir';await iniciar(a);await esperar(()=>retidas.length===1)
+   await avaliar(b,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-B'}));true")
+   await assert.rejects(abrir(b),/outro ambiente/)
+   const retida=retidas.shift();efeitos.set(retida.registro.chave,{body:retida.registro.body,dados:{id:proximoId++}})
+   await avaliar(a,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-B'}));true")
+   responder(retida.res,efeitos.get(retida.registro.chave).dados)
+   assert.equal((await avaliar(a,'window.envio')).ok,false)
+   for(const tab of [a,b])await avaliar(tab,"sessionStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-A'}));true")
+   const recuperada=await abrir(b);assert.equal(recuperada.id,ta.id);assert.equal(recuperada.pendente.chave,retida.registro.chave)
+   modo='normal';assert.ok((await enviar(b)).ok);assert.equal(efeitos.size,1)
   })
   await t.test('pagamentos simultaneos: 80 interleavings com mesma chave e resultado',async()=>{
    for(let tentativa=0;tentativa<80;tentativa++) {

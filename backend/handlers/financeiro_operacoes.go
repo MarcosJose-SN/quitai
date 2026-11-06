@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/MarcosJose/quitai/auth"
 	"github.com/lib/pq"
 	"io"
 	"log"
@@ -47,7 +48,26 @@ func lerPedidoFinanceiro(w http.ResponseWriter, r *http.Request, destino any) er
 	}
 	return nil
 }
+func validarAmbienteFinanceiro(w http.ResponseWriter, r *http.Request) bool {
+	ambiente := auth.AmbienteFinanceiro()
+	if ambiente == "" {
+		erroFinanceiro(w, 503, "Ambiente financeiro indisponivel.", "incerto")
+		return false
+	}
+	valoresAmbiente := r.Header.Values("X-Financial-Environment")
+	if len(valoresAmbiente) != 1 || valoresAmbiente[0] != ambiente {
+		erroFinanceiro(w, 409, "Ambiente financeiro ausente ou divergente. Preserve a intencao original.", "conflito")
+		return false
+	}
+
+	return true
+}
+
 func chaveFinanceira(w http.ResponseWriter, r *http.Request) (string, bool) {
+	if !validarAmbienteFinanceiro(w, r) {
+		return "", false
+	}
+
 	valores := r.Header.Values("Idempotency-Key")
 	if len(valores) != 1 || !chaveFinanceiraValida.MatchString(valores[0]) {
 		erroFinanceiro(w, 400, "Informe Idempotency-Key com 16 a 128 caracteres (letras, numeros, _ ou -).", "nao_confirmado")

@@ -7,7 +7,7 @@ function preparar() {
   const dados=new Map()
   globalThis.localStorage={getItem:k=>dados.get(k)??null,setItem:(k,v)=>dados.set(k,String(v)),removeItem:k=>dados.delete(k)}
   globalThis.sessionStorage={getItem:()=>null,removeItem:()=>{}}
-  localStorage.setItem('quitai_token','fixture-A');localStorage.setItem('quitai_usuario',JSON.stringify({id:1}))
+  localStorage.setItem('quitai_token','fixture-A');localStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:'fixture-env-A'}))
   globalThis.window={location:{origin:'http://localhost:5174'},dispatchEvent:()=>{}}
   instalarWebLocks()
   globalThis.fetch=async()=>{throw new Error('UNEXPECTED_HTTP')}
@@ -32,7 +32,7 @@ test('quatro geracoes e duas abas conservam prova do primeiro espelho sob quota 
  const get=localStorage.getItem.bind(localStorage)
  localStorage.getItem=k=>k===primeira.escopo?JSON.stringify(independente):get(k)
  const commits=navigator.locks.persistencia.commits.length
- await assert.rejects(abrir(api,tipo),/intencoes financeiras diferentes/)
+ await assert.rejects(abrir(api,tipo),/intencoes financeiras diferentes|invalido/)
  assert.equal(navigator.locks.persistencia.commits.length,commits)
 })
 
@@ -78,15 +78,18 @@ test('sem Web Locks bloqueia envio e conserva legado byte a byte',async()=>{
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{}})
  await assert.rejects(abrir(api,tipo),/Web Locks/);assert.equal(localStorage.getItem(key),texto)
 })
-test('recuperacao legada conserva chave e pedido e persiste versao',async()=>{
- preparar();const key='quitai_financeiro_pendente:venda_completa:'+encodeURIComponent(api)+':1';localStorage.setItem(key,JSON.stringify({chave:'chave-legada-fixture-123',pedido}))
- const a=await abrir(api,tipo);assert.deepEqual(a.pendente,{chave:'chave-legada-fixture-123',pedido});assert.equal(JSON.parse(localStorage.getItem(key)).versao,1)
- globalThis.fetch=async(_u,o)=>{assert.equal(o.headers.get('Idempotency-Key'),'chave-legada-fixture-123');return sucesso()};await enviar(api,tipo,pedido,a)
+test('registro legado sem ambiente permanece intacto e bloqueia abertura',async()=>{
+ preparar();const key='quitai_financeiro_pendente:venda_completa:'+encodeURIComponent(api)+':1'
+ const texto=JSON.stringify({versao:1,id:'identidade-legada-123',chave:'chave-legada-fixture-123',estado:'pendente',pedido})
+ localStorage.setItem(key,texto)
+ await assert.rejects(abrir(api,tipo),/legada/)
+ assert.equal(localStorage.getItem(key),texto)
+ assert.equal(navigator.locks.persistencia.commits.length,0)
 })
 test('registros corrompidos ou de versao desconhecida nunca sao substituidos',async()=>{
  for(const texto of ['{','null',JSON.stringify({versao:99,chave:'chave-legada-fixture-123',pedido})]) {
   preparar();const key='quitai_financeiro_pendente:venda_completa:'+encodeURIComponent(api)+':1';localStorage.setItem(key,texto)
-  await assert.rejects(abrir(api,tipo),/invalido/);assert.equal(localStorage.getItem(key),texto)
+  await assert.rejects(abrir(api,tipo),/invalido|legada/);assert.equal(localStorage.getItem(key),texto)
  }
 })
 test('falha de leitura bloqueia; falha do espelho nao elimina intencao no IndexedDB',async()=>{
@@ -140,7 +143,7 @@ test('legado conflitante de outra versao nao e sobrescrito pelo registro Indexed
  await assert.rejects(enviar(api,tipo,pedido,a))
  const legado=JSON.stringify({chave:'outra-chave-legada-123',pedido:{cliente_id:99}})
  localStorage.setItem(a.escopo,legado)
- await assert.rejects(abrir(api,tipo),/intencoes financeiras diferentes/)
+ await assert.rejects(abrir(api,tipo),/intencoes financeiras diferentes|invalido/)
  assert.equal(localStorage.getItem(a.escopo),legado)
 })
 
@@ -156,13 +159,13 @@ for (const operacao of ['venda_completa','pagamento']) test(`${operacao}: negati
  const recibo=await enviar(api,operacao,payload,a);assert.equal(operacao==='pagamento'?recibo.pagamento_id:recibo.id,8);assert.equal(n,2)
  const nova=await abrir(api,operacao);assert.notEqual(nova.id,a.id)
 })
-test('registro nao_confirmada do protocolo anterior e recuperado sem substituir chave ou pedido',async()=>{
+test('registro antigo nao_confirmada sem ambiente permanece bloqueado',async()=>{
  preparar();const key='quitai_financeiro_pendente:venda_completa:'+encodeURIComponent(api)+':1'
- const original={versao:1,id:'identidade-anterior-123',chave:'chave-anterior-123456',estado:'nao_confirmada',pedido}
- localStorage.setItem(key,JSON.stringify(original));const a=await abrir(api,tipo)
- assert.equal(a.id,original.id);assert.deepEqual(a.pendente,{chave:original.chave,pedido})
- const armazenado=JSON.parse(localStorage.getItem(key));assert.equal(armazenado.estado,'pendente');assert.equal(armazenado.resultado_remoto,'desconhecido')
- await assert.rejects(enviar(api,tipo,{...pedido,cliente_id:99},a),/outro pedido/)
+ const texto=JSON.stringify({versao:1,id:'identidade-legada-123',chave:'chave-legada-fixture-123',estado:'nao_confirmada',pedido})
+ localStorage.setItem(key,texto)
+ await assert.rejects(abrir(api,tipo),/legada/)
+ assert.equal(localStorage.getItem(key),texto)
+ assert.equal(navigator.locks.persistencia.commits.length,0)
 })
 
 for (const modo of ['abort','error']) test(`COMMIT assincrono ${modo}: nao publica confirmacao e conserva replay`,async()=>{
@@ -192,9 +195,67 @@ test('IndexedDB confirmado repara espelho pendente sem novo HTTP',async()=>{
  const recuperada=await abrir(api,tipo,{somenteRecuperar:true});assert.equal(recuperada.id,a.id);assert.equal(recuperada.confirmada,true)
  await enviar(api,tipo,pedido,recuperada);assert.equal(n,1)
 })
-test('confirmacao existente apenas no espelho exige comprovacao do backend com mesma chave',async()=>{
+test('espelho legado confirmado sem ambiente nao autoriza importacao',async()=>{
  preparar();const key='quitai_financeiro_pendente:venda_completa:'+encodeURIComponent(api)+':1'
- localStorage.setItem(key,JSON.stringify({versao:1,id:'intencao-confirmada-local',chave:'chave-confirmada-local',estado:'confirmada',pedido,comprovante:{id:999}}))
- const a=await abrir(api,tipo);assert.equal(a.id,'intencao-confirmada-local');assert.equal(a.pendente.chave,'chave-confirmada-local')
- globalThis.fetch=async(_u,o)=>{assert.equal(o.headers.get('Idempotency-Key'),'chave-confirmada-local');return sucesso()};assert.equal((await enviar(api,tipo,pedido,a)).id,7)
+ const texto=JSON.stringify({versao:1,id:'identidade-legada-123',chave:'chave-legada-fixture-123',estado:'confirmada',pedido,comprovante:{id:999}})
+ localStorage.setItem(key,texto)
+ await assert.rejects(abrir(api,tipo),/legada/)
+ assert.equal(localStorage.getItem(key),texto)
+ assert.equal(navigator.locks.persistencia.commits.length,0)
+})
+
+function ambiente(valor) { localStorage.setItem('quitai_usuario',JSON.stringify({id:1,ambiente_financeiro:valor})) }
+test('ambiente ausente bloqueia reserva sem HTTP',async()=>{
+ preparar();ambiente(undefined);await assert.rejects(abrir(api,tipo),/Ambiente/)
+ assert.equal(navigator.locks.persistencia.commits.length,0)
+})
+test('troca de ambiente bloqueia intencao anterior e preserva pedido apos recarga e login',async()=>{
+ preparar();const a=await abrir(api,tipo);let header
+ globalThis.fetch=async(_u,o)=>{header=o.headers.get('X-Financial-Environment');throw new TypeError('rede')}
+ await assert.rejects(enviar(api,tipo,pedido,a));assert.equal(header,'fixture-env-A')
+ const key=a.escopo,texto=localStorage.getItem(key)
+ ambiente('fixture-env-B');await assert.rejects(abrir(api,tipo),/outro ambiente/)
+ await assert.rejects(enviar(api,tipo,pedido,a));assert.equal(localStorage.getItem(key),texto)
+ ambiente('fixture-env-A');const b=await abrir(api,tipo);assert.equal(b.id,a.id);assert.deepEqual(b.pendente.pedido,pedido)
+})
+test('mudanca de ambiente durante HTTP nao confirma nem sobrescreve intencao original',async()=>{
+ preparar();const a=await abrir(api,tipo);let resolver, iniciou
+ const pronto=new Promise(r=>iniciou=r)
+ globalThis.fetch=async()=>{iniciou();return new Promise(r=>resolver=r)}
+ const envio=enviar(api,tipo,pedido,a);await pronto;ambiente('fixture-env-B');resolver(sucesso())
+ await assert.rejects(envio,/Sessao alterada/);ambiente('fixture-env-A')
+ assert.equal((await pendente(api,tipo)).chave,a.pendente?.chave || JSON.parse(localStorage.getItem(a.escopo)).chave)
+})
+test('legado somente IndexedDB e preservado e impede nova intencao',async()=>{
+ preparar();const {transacionarIntencao}=await import('../src/services/intencoesFinanceirasStore.js')
+ const key='quitai_financeiro_pendente:venda_completa:'+encodeURIComponent(api)+':1'
+ const original={chave:'chave-legada-fixture-123',pedido}
+ await transacionarIntencao(key,(_r,salvar)=>salvar(original))
+ const antes=navigator.locks.persistencia.commits.length
+ await assert.rejects(abrir(api,tipo),/legada/);assert.equal(navigator.locks.persistencia.commits.length,antes)
+})
+
+test('registro confirmado de outro ambiente nao e reclassificado nem ocultado por nova abertura',async()=>{
+ preparar();const a=await abrir(api,tipo);globalThis.fetch=async()=>sucesso();await enviar(api,tipo,pedido,a)
+ const texto=localStorage.getItem(a.escopo);ambiente('fixture-env-B')
+ await assert.rejects(abrir(api,tipo),/outro ambiente/);assert.equal(localStorage.getItem(a.escopo),texto)
+})
+test('espelho sem ambiente em namespace novo nunca e importado nem substitui autoritativo',async()=>{
+ preparar();const a=await abrir(api,tipo);const r=JSON.parse(localStorage.getItem(a.escopo));delete r.ambiente
+ const texto=JSON.stringify(r);localStorage.setItem(a.escopo,texto)
+ const antes=navigator.locks.persistencia.commits.length
+ await assert.rejects(abrir(api,tipo));assert.equal(localStorage.getItem(a.escopo),texto)
+ assert.equal(navigator.locks.persistencia.commits.length,antes)
+})
+
+for (const estado of ['nao_confirmada','confirmada']) test(`legado ${estado} somente IndexedDB permanece intacto e bloqueado`,async()=>{
+ preparar();const {transacionarIntencao}=await import('../src/services/intencoesFinanceirasStore.js')
+ const key='quitai_financeiro_pendente:venda_completa:'+encodeURIComponent(api)+':1'
+ const original={versao:1,id:'identidade-legada-123',chave:'chave-legada-fixture-123',estado,pedido,...(estado==='confirmada'?{comprovante:{id:999}}:{})}
+ await transacionarIntencao(key,(_r,salvar)=>salvar(original))
+ const antes=navigator.locks.persistencia.commits.length
+ await assert.rejects(abrir(api,tipo),/legada/)
+ const preservado=await transacionarIntencao(key,r=>r)
+ assert.deepEqual(preservado,original);assert.equal(navigator.locks.persistencia.commits.length,antes)
+ assert.equal(localStorage.getItem(key),null)
 })

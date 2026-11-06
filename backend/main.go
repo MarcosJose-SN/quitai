@@ -29,7 +29,7 @@ func cors(next http.Handler) http.Handler {
 		if permitida {
 			w.Header().Set("Access-Control-Allow-Origin", origemPermitida)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key, X-Financial-Environment")
 		}
 
 		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {

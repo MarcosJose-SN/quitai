@@ -13,6 +13,7 @@ import (
 )
 
 func TestExcluirVendaSemPagamentosPermiteExclusao(t *testing.T) {
+    t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
     db, mock, err := sqlmock.New()
     if err != nil {
         t.Fatal(err)
@@ -80,6 +81,7 @@ func TestExcluirVendaSemPagamentosPermiteExclusao(t *testing.T) {
     mock.ExpectCommit()
 
     req := httptest.NewRequest(http.MethodDelete, "/vendas/9", nil)
+    req.Header.Set("X-Financial-Environment", "fixture-env-A")
     req.Header.Set("Authorization", "Bearer "+tokenString)
     rec := httptest.NewRecorder()
 

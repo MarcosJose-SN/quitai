@@ -62,3 +62,37 @@ export async function encerrarSessaoServidor(api) {
     exigirNovoLogin()
   } finally { clearTimeout(timer) }
 }
+
+export function obterAmbienteFinanceiro() {
+ const usuario = JSON.parse(localStorage.getItem('quitai_usuario') || sessionStorage.getItem('quitai_usuario') || 'null')
+ const ambiente = usuario?.ambiente_financeiro
+ if (typeof ambiente !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(ambiente)) throw new Error('Ambiente financeiro nao validado. Entre novamente; preserve as pendencias.')
+ return ambiente
+}
+
+// Capture when the user opens confirmation, never relabel a stale action on submit.
+export function capturarContextoExclusao(api, vendaId) {
+ const token = obterToken()
+ const conta = chaveDaConta('quitai_exclusao', api)
+ if (!token || !conta || !Number.isSafeInteger(vendaId) || vendaId <= 0) throw new Error('Valide a sessao e reabra a confirmacao de exclusao.')
+ return Object.freeze({ api, vendaId, token, conta, ambiente: obterAmbienteFinanceiro() })
+}
+export function validarContextoExclusao(ctx) {
+ if (!ctx || obterToken() !== ctx.token || chaveDaConta('quitai_exclusao',ctx.api) !== ctx.conta || obterAmbienteFinanceiro() !== ctx.ambiente) {
+  throw new Error('Sessao ou ambiente alterado. Reabra os detalhes e a confirmacao de exclusao; nao repita automaticamente uma solicitacao ja enviada.')
+ }
+}
+export async function excluirVendaNoAmbiente(api, vendaId, ctx) {
+ validarContextoExclusao(ctx)
+ if (ctx.api !== api || ctx.vendaId !== vendaId) throw new Error('Contexto de exclusao divergente. Reabra a confirmacao.')
+ const resposta = await fetchAutenticado(`${api}/vendas/${vendaId}`, {
+  method: 'DELETE', headers: { 'X-Financial-Environment': ctx.ambiente },
+ })
+ validarContextoExclusao(ctx)
+ if (!resposta.ok) {
+  const mensagem = await resposta.text()
+  validarContextoExclusao(ctx)
+  throw new Error(mensagem || 'Nao foi possivel confirmar a exclusao.')
+ }
+ return resposta
+}

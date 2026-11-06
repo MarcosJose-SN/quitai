@@ -1,5 +1,5 @@
 import { transacionarIntencao } from './intencoesFinanceirasStore.js'
-import { chaveDaConta, fetchAutenticado, obterToken } from './sessaoRevendedora.js'
+import { chaveDaConta, fetchAutenticado, obterToken, obterAmbienteFinanceiro } from './sessaoRevendedora.js'
 
 const caminhos = { venda_completa: '/vendas/completa', pagamento: '/pagamentos' }
 const chaveValida = /^[A-Za-z0-9_-]{16,128}$/
@@ -18,19 +18,19 @@ function congelar(valor) {
   }
   return valor
 }
-function chaveLocal(api, tipo) {
+export function escopoFinanceiro(api, tipo) {
   if (!caminhos[tipo]) throw new Error('Operacao financeira desconhecida.')
   const chave = chaveDaConta(`quitai_financeiro_pendente:${tipo}`, api)
   if (!chave) throw new Error('Valide sua conta antes de enviar uma operacao financeira.')
-  return chave
+  return `${chave}:ambiente:${obterAmbienteFinanceiro()}`
 }
 function contexto(api, tipo) {
   const token = obterToken()
   if (!token) throw new Error('Valide sua conta antes de enviar uma operacao financeira.')
-  return { chave: chaveLocal(api, tipo), token, api, tipo }
+  return { chave: escopoFinanceiro(api, tipo), base: chaveDaConta(`quitai_financeiro_pendente:${tipo}`, api), ambiente: obterAmbienteFinanceiro(), token, api, tipo }
 }
 function validarSessao(ctx) {
-  if (obterToken() !== ctx.token || chaveLocal(ctx.api, ctx.tipo) !== ctx.chave) {
+  if (obterToken() !== ctx.token || escopoFinanceiro(ctx.api, ctx.tipo) !== ctx.chave) {
     throw new Error('Sessao alterada. Reabra o formulario na conta correta; a pendencia foi preservada.')
   }
 }
@@ -43,12 +43,10 @@ function comprovanteMinimo(tipo, dados) {
 }
 function validarRegistro(r) {
   if (r === null) return null
+  if (typeof r?.ambiente !== 'string' || !/^[A-Za-z0-9_-]{8,128}$/.test(r.ambiente)) throw new Error('Intencao legada sem ambiente. Preserve os dados; envio bloqueado.')
   const pedidoValido = r?.pedido && typeof r.pedido === 'object' && !Array.isArray(r.pedido)
   if (typeof r?.chave !== 'string' || !chaveValida.test(r.chave)) throw new Error(erroLocal)
-  if (!Object.hasOwn(r, 'versao')) {
-    if (!pedidoValido) throw new Error(erroLocal)
-    return { versao: 1, id: r.chave, chave: r.chave, estado: 'pendente', pedido: r.pedido, resultado_remoto: 'desconhecido' }
-  }
+  if (!Object.hasOwn(r, 'versao')) throw new Error(erroLocal)
   if (r.versao !== 1 || typeof r.id !== 'string' || !chaveValida.test(r.id) || !estados.includes(r.estado)) throw new Error(erroLocal)
   if (r.estado === 'preparada' ? r.pedido !== null : !pedidoValido) throw new Error(erroLocal)
   return r.estado === 'nao_confirmada' ? { ...r, estado: 'pendente', resultado_remoto: 'desconhecido' } : r
@@ -71,11 +69,12 @@ function reconciliar(autoritativo, espelho, tipo) {
       : legado
   }
   let atual = validarRegistro(autoritativo)
+  if (espelho && espelho.ambiente !== atual?.ambiente) throw new Error('Ambiente divergente entre armazenamentos; envio bloqueado.')
   if (!atual || (atual.estado === 'confirmada' && !comprovanteValido(tipo, atual.comprovante))) throw new Error(erroLocal)
   if (atual.estado === 'preparada' && espelho?.id === atual.id && espelho.chave === atual.chave && espelho.pedido !== null) {
     atual = { ...atual, pedido: espelho.pedido, estado: 'pendente', resultado_remoto: 'desconhecido' }
   }
-  const corresponde = prova => prova && comprovanteValido(tipo, prova.comprovante) && espelho?.id === prova.id && espelho?.chave === prova.chave &&
+  const corresponde = prova => prova && prova.ambiente === atual.ambiente && comprovanteValido(tipo, prova.comprovante) && espelho?.id === prova.id && espelho?.chave === prova.chave &&
     (espelho.pedido === null || (prova.pedido !== undefined && serializar(espelho.pedido) === serializar(prova.pedido)))
   const antecessoraConfirmada = corresponde(atual.antecessora) || corresponde(atual.espelhoSuperado)
   if (espelho && !antecessoraConfirmada && (espelho.id !== atual.id || espelho.chave !== atual.chave ||
@@ -111,7 +110,17 @@ async function comTrava(ctx, executar) {
       let registroCommit, alterado = false
       const resultado = await transacionarIntencao(ctx.chave, (autoritativo, salvar) => {
         validarSessao(ctx)
+        for (let i=0;i<localStorage.length;i++) {
+          const key = localStorage.key(i)
+          if (key?.startsWith(ctx.base+':ambiente:') && key !== ctx.chave) {
+            const outro = espelhoDaConta(key)
+            if (outro) throw new Error('Pendencia de outro ambiente; envio bloqueado. Preserve os dados.')
+          }
+        }
+        if (localStorage.getItem(ctx.base) !== null) throw new Error('Pendencia legada sem ambiente. Preserve os dados e solicite suporte; envio bloqueado.')
+        if (autoritativo && autoritativo.ambiente !== ctx.ambiente) throw new Error('Ambiente da intencao divergente; envio bloqueado.')
         const atual = reconciliar(autoritativo, espelhoDaConta(ctx.chave), ctx.tipo)
+        if (atual && atual.ambiente !== ctx.ambiente) throw new Error('Intencao sem ambiente ou divergente; envio bloqueado.')
         registroCommit = atual
         const persistir = registro => {
           validarSessao(ctx)
@@ -124,7 +133,7 @@ async function comTrava(ctx, executar) {
         // Import legacy/mirror-only records conservatively, in the same transaction.
         if (atual && serializar(atual) !== serializar(autoritativo)) persistir(atual)
         return executar(atual, persistir)
-      })
+      }, ctx.base)
       // This point is reached only after tx.oncomplete, while still holding the lock.
       validarSessao(ctx)
       if (registroCommit) {
@@ -160,9 +169,9 @@ export async function prepararIntencaoFinanceira(api, tipo, { somenteRecuperar =
     }
     const r = anterior && ['preparada', 'pendente'].includes(anterior.estado)
       ? anterior
-      : { versao: 1, id: crypto.randomUUID(), chave: crypto.randomUUID(), estado: 'preparada', pedido: null }
+      : { versao: 1, ambiente: ctx.ambiente, id: crypto.randomUUID(), chave: crypto.randomUUID(), estado: 'preparada', pedido: null }
     if (anterior?.estado === 'confirmada' && r.id !== anterior.id) {
-      const prova = { id: anterior.id, chave: anterior.chave, pedido: anterior.pedido, comprovante: anterior.comprovante }
+      const prova = { ambiente: anterior.ambiente, id: anterior.id, chave: anterior.chave, pedido: anterior.pedido, comprovante: anterior.comprovante }
       r.antecessora = prova
       const espelho = espelhoDaConta(ctx.chave)
       // Carry only the observed, already verified stale generation, not an
@@ -202,7 +211,7 @@ export async function enviarOperacaoFinanceira(api, tipo, pedido, intencao) {
   try {
     // No Web Lock is held during HTTP. Replays use the durable key and payload.
     const resposta = await fetchAutenticado(`${api}${caminhos[tipo]}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operacao.chave },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': operacao.chave, 'X-Financial-Environment': operacao.ambiente },
       body: JSON.stringify(operacao.pedido), signal: controle.signal,
     })
     const dados = await resposta.json().catch(() => null)

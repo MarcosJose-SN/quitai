@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { obterOperacaoPendente } from './operacoesFinanceiras.js'
-import { chaveDaConta, obterToken } from './sessaoRevendedora.js'
+import { obterOperacaoPendente, escopoFinanceiro } from './operacoesFinanceiras.js'
+import { obterToken } from './sessaoRevendedora.js'
+
+function escopoSeguro(api,tipo) { try { return escopoFinanceiro(api,tipo) } catch { return null } }
 
 export function useRecuperacaoFinanceira(api, tipo, habilitada, referencia) {
-  const escopoAtual = chaveDaConta(`quitai_financeiro_pendente:${tipo}`, api)
+  const escopoAtual = escopoSeguro(api,tipo)
   const [estado, setEstado] = useState({ carregando: true, pendente: null, erro: '', referencia: null, escopo: null })
   const [revisao, setRevisao] = useState(0)
   const geracao = useRef(0)
@@ -23,7 +25,7 @@ export function useRecuperacaoFinanceira(api, tipo, habilitada, referencia) {
   }, [api, tipo, habilitada, referencia, revisao, escopoAtual])
   useEffect(() => {
     if (!habilitada) return
-    const escopo = chaveDaConta(`quitai_financeiro_pendente:${tipo}`, api)
+    const escopo = escopoSeguro(api,tipo)
     const local = evento => { if (evento.detail?.escopo === escopo) atualizar() }
     const storage = evento => { if (evento.key === escopo || evento.key === null) atualizar() }
     const aoFocar = () => atualizar()

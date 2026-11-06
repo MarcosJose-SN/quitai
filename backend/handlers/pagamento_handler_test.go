@@ -15,6 +15,7 @@ import (
 )
 
 func TestRegistrarPagamentoNaoPermiteVendaDeOutroUsuario(t *testing.T) {
+	t.Setenv("FINANCIAL_ENVIRONMENT_ID", "fixture-env-A")
 	secretAnterior, existia := os.LookupEnv("QUITAIA_JWT_SECRET")
 	os.Setenv("QUITAIA_JWT_SECRET", "quitai-chave-teste-isolamento-2026-segura")
 	defer func() {
@@ -59,6 +60,7 @@ func TestRegistrarPagamentoNaoPermiteVendaDeOutroUsuario(t *testing.T) {
 	body := `{"venda_id":9,"parcela_id":1,"valor":10,"forma_pagamento":"PIX"}`
 	req := httptest.NewRequest(http.MethodPost, "/pagamentos", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Financial-Environment", "fixture-env-A")
 	req.Header.Set("Idempotency-Key", "teste-pagamento-chave-001")
 	req.Header.Set("Authorization", "Bearer "+token)
 

@@ -57,6 +57,10 @@ func ExcluirVenda(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		if !validarAmbienteFinanceiro(w, r) {
+			return
+		}
+
 		tx, err := db.Begin()
 		if err != nil {
 			http.Error(w, "Não foi possível iniciar a exclusão da venda.", http.StatusInternalServerError)
