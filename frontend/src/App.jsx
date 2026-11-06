@@ -1,3 +1,4 @@
+import { somarBoletosEmAbertoCentavos, formatarCentavos } from './utils/boletosEmAberto.js'
 import { useRecuperacaoFinanceira } from './services/useRecuperacaoFinanceira.js'
 import { encerrarSessaoServidor, exigirNovoLogin, capturarContextoExclusao, validarContextoExclusao, excluirVendaNoAmbiente } from './services/sessaoRevendedora.js'
 import { enviarOperacaoFinanceira, obterOperacaoPendente, prepararIntencaoFinanceira } from './services/operacoesFinanceiras'
@@ -555,7 +556,7 @@ function App() {
   const [pagamentosVenda, setPagamentosVenda] = useState([])
 
   // Total real dos saldos das parcelas ainda abertas.
-  const [totalBoletosEmAberto, setTotalBoletosEmAberto] = useState(null)
+  const [totalBoletosEmAbertoCentavos, setTotalBoletosEmAbertoCentavos] = useState(null)
 
   const [salvandoPagamento, setSalvandoPagamento] = useState(false)
   const [erroPagamento, setErroPagamento] = useState('')
@@ -729,60 +730,14 @@ function App() {
       // O cartão "Boletos em aberto" usa as parcelas reais do banco.
       // Não usa o saldo total da venda, evitando duplicar "A receber".
       try {
-        const detalhes = await Promise.all(
-          vendasRecebidas.map(async (venda) => {
-            try {
-              const respostaDetalhes = await fetchAutenticado(
-                `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/${venda.id}`
-              )
-
-              if (!respostaDetalhes.ok) {
-                return null
-              }
-
-              return await respostaDetalhes.json()
-            } catch {
-              return null
-            }
-          })
-        )
-
-        if (detalhes.some(detalhe => !detalhe)) throw new Error('Resumo de parcelas incompleto.')
-        const totalParcelasAbertas = detalhes.reduce(
-          (total, vendaDetalhada) => {
-            if (!vendaDetalhada) {
-              return total
-            }
-
-            const parcelas = vendaDetalhada.parcelas || []
-
-            return (
-              total +
-              parcelas.reduce(
-                (subtotal, parcela) => {
-                  const valor = Number(parcela.valor || 0)
-                  const valorPago = Number(parcela.valor_pago || 0)
-
-                  return (
-                    subtotal +
-                    Math.max(valor - valorPago, 0)
-                  )
-                },
-                0
-              )
-            )
-          },
-          0
-        )
-
-        setTotalBoletosEmAberto(totalParcelasAbertas)
+        setTotalBoletosEmAbertoCentavos(somarBoletosEmAbertoCentavos(vendasRecebidas))
       } catch (error) {
         console.error(
           'Erro ao calcular boletos em aberto:',
           error
         )
 
-        setTotalBoletosEmAberto(null)
+        setTotalBoletosEmAbertoCentavos(null)
       }
     } catch (error) {
       console.error(
@@ -790,6 +745,7 @@ function App() {
         error
       )
 
+      setTotalBoletosEmAbertoCentavos(null)
       setErroVendas(
         'Não foi possível carregar as vendas.'
       )
@@ -2598,7 +2554,7 @@ function App() {
                 </span>
 
                 <strong>
-                  R$ {totalBoletosEmAberto === null ? '—' : formatarMoeda(totalBoletosEmAberto)}
+                  R$ {totalBoletosEmAbertoCentavos === null ? '—' : formatarCentavos(totalBoletosEmAbertoCentavos)}
                 </strong>
               </button>
 

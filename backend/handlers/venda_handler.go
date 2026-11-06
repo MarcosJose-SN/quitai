@@ -284,6 +284,12 @@ func CriarVenda(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// DTO exclusivo de leitura: nao altera os contratos das operacoes financeiras.
+type vendaListagem struct {
+	models.Venda
+	ValorParcelasEmAbertoCentavos int64 `json:"valor_parcelas_em_aberto_centavos"`
+}
+
 func ListarVendas(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -297,7 +303,7 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		rows, err := db.Query(`
+		rows, err := db.QueryContext(r.Context(), `
 			SELECT
 				v.id,
 				v.cliente_id,
@@ -309,11 +315,20 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 				v.valor_pago,
 				v.saldo,
 				v.total_parcelas,
-                (SELECT MIN(pa.vencimento)::text FROM parcelas pa WHERE pa.venda_id=v.id AND pa.valor_pago<pa.valor)
+				resumo.proximo_vencimento,
+				resumo.valor_parcelas_em_aberto_centavos
 			FROM vendas v
 			LEFT JOIN clientes c
 				ON c.id = v.cliente_id
 				AND c.usuario_id = v.usuario_id
+			LEFT JOIN LATERAL (
+				SELECT
+					(MIN(pa.vencimento) FILTER (WHERE pa.valor_pago < pa.valor))::text AS proximo_vencimento,
+					(COALESCE(SUM(GREATEST(pa.valor - pa.valor_pago, 0::numeric)), 0::numeric) * 100)::bigint
+						AS valor_parcelas_em_aberto_centavos
+				FROM parcelas pa
+				WHERE pa.venda_id = v.id
+			) resumo ON TRUE
 			WHERE v.usuario_id = $1
 			ORDER BY v.id DESC
 		`, usuarioID)
@@ -323,10 +338,10 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 		}
 		defer rows.Close()
 
-		vendas := []models.Venda{}
+		vendas := []vendaListagem{}
 
 		for rows.Next() {
-			var venda models.Venda
+			var venda vendaListagem
 			var proximo sql.NullString
 			if err := rows.Scan(
 				&venda.ID,
@@ -340,6 +355,7 @@ func ListarVendas(db *sql.DB) http.HandlerFunc {
 				&venda.Saldo,
 				&venda.TotalParcelas,
 				&proximo,
+				&venda.ValorParcelasEmAbertoCentavos,
 			); err != nil {
 				http.Error(w, "Erro ao ler vendas", http.StatusInternalServerError)
 				return
