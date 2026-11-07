@@ -1,3 +1,4 @@
+import { criarLeituraVendas } from '../src/services/leituraVendas.js'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -36,10 +37,10 @@ test('ausencia ou invalidade em qualquer venda impede total parcial ou zero sile
 
 test('buscarVendas faz apenas a listagem; detalhes funcionais continuam separados', async () => {
   const app = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8')
-  const trecho = app.slice(app.indexOf('  async function buscarVendas()'), app.indexOf('  async function abrirNovaVenda()'))
+  const trecho = app.slice(app.indexOf('  const leituraVendasRef = useRef(null)'), app.indexOf('  async function abrirNovaVenda()'))
   assert.equal((trecho.match(/fetchAutenticado\(/g) || []).length, 1)
   assert.ok(trecho.includes('/vendas/listar'))
-  assert.ok(trecho.includes('somarBoletosEmAbertoCentavos(vendasRecebidas)'))
+  assert.ok(trecho.includes('somarBoletosEmAbertoCentavos(dados)'))
   assert.ok(trecho.includes('setTotalBoletosEmAbertoCentavos(null)'))
   assert.ok(app.includes('/vendas/${vendaId}'))
   assert.ok(app.includes('/vendas/${vendaSelecionada.venda.id}'))
@@ -47,17 +48,17 @@ test('buscarVendas faz apenas a listagem; detalhes funcionais continuam separado
 
 test('fluxo real buscarVendas com HTTP simulado: N vendas usam uma requisicao e erro controlado', async () => {
   const app = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8')
-  const inicio = app.indexOf('  async function buscarVendas()')
+  const inicio = app.indexOf('  const leituraVendasRef = useRef(null)')
   const fim = app.indexOf('\n  // =========================================================', inicio + 1)
   const fonte = app.slice(inicio, fim).replaceAll('import.meta.env.VITE_API_URL', '"http://fixture.local"')
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
   for (const dados of [[], [venda(31)], [venda(31), venda(0), venda(766)], [{}], [venda(-1)]]) {
     const urls = [], totais = [], listas = [], erros = [], carregando = []
-    const executar = new AsyncFunction('fetchAutenticado', 'setCarregandoVendas', 'setErroVendas', 'setVendas', 'setTotalBoletosEmAbertoCentavos', 'somarBoletosEmAbertoCentavos', 'console', `${fonte}; await buscarVendas()`)
+    const executar = new AsyncFunction('fetchAutenticado', 'setCarregandoVendas', 'setErroVendas', 'setVendas', 'setTotalBoletosEmAbertoCentavos', 'somarBoletosEmAbertoCentavos', 'console', 'criarLeituraVendas', 'useRef', 'useEffect', 'apiBase', 'autenticado', 'validandoSessao', 'tela', 'obterToken', 'localStorage', 'sessionStorage', `${fonte}; await buscarVendas()`)
     await executar(async url => {
       urls.push(url)
       return new Response(JSON.stringify(dados), { status: 200 })
-    }, v => carregando.push(v), v => erros.push(v), v => listas.push(v), v => totais.push(v), somar, { error() {} })
+    }, v => carregando.push(v), v => erros.push(v), v => listas.push(v), v => totais.push(v), somar, { error() {} }, criarLeituraVendas, v => ({ current: v }), f => f(), 'http://fixture.local', true, false, 'inicio', () => 'fixture-token', { getItem: () => 'fixture' }, { getItem: () => null })
     assert.deepEqual(urls, ['http://fixture.local/vendas/listar'])
     assert.deepEqual(listas, [dados])
     assert.deepEqual(carregando, [true, false])

@@ -1,10 +1,11 @@
+import { criarLeituraVendas } from './services/leituraVendas.js'
 import { somarBoletosEmAbertoCentavos, formatarCentavos } from './utils/boletosEmAberto.js'
 import { useRecuperacaoFinanceira } from './services/useRecuperacaoFinanceira.js'
 import { encerrarSessaoServidor, exigirNovoLogin, capturarContextoExclusao, validarContextoExclusao, excluirVendaNoAmbiente } from './services/sessaoRevendedora.js'
 import { enviarOperacaoFinanceira, obterOperacaoPendente, prepararIntencaoFinanceira } from './services/operacoesFinanceiras'
 import { conectarEventosSuporte } from './services/suporteEventos'
 import { useEffect, useRef, useState } from 'react'
-import { fetchAutenticado, chaveDaConta, lerListaLocal, limparSessao } from './services/sessaoRevendedora'
+import { fetchAutenticado, obterToken, chaveDaConta, lerListaLocal, limparSessao } from './services/sessaoRevendedora'
 import { dataLocalISO, centavosValidos, quantidadeValida, criarTravaOperacoes } from './utils/validacaoRevendedora'
 import './App.css'
 import Login from './Login'
@@ -709,49 +710,40 @@ function App() {
   // VENDAS - BUSCAR
   // =========================================================
 
-  async function buscarVendas() {
-    try {
-      setCarregandoVendas(true)
-      setErroVendas('')
-
-      const resposta = await fetchAutenticado(
-        `${import.meta.env.VITE_API_URL || "http://localhost:8082"}/vendas/listar`
-      )
-
-      if (!resposta.ok) {
-        throw new Error('Erro ao buscar vendas')
-      }
-
-      const dados = await resposta.json()
-      if (!Array.isArray(dados)) throw new Error('Formato inesperado de vendas.')
-      const vendasRecebidas = dados
-      setVendas(vendasRecebidas)
-
-      // O cartão "Boletos em aberto" usa as parcelas reais do banco.
-      // Não usa o saldo total da venda, evitando duplicar "A receber".
-      try {
-        setTotalBoletosEmAbertoCentavos(somarBoletosEmAbertoCentavos(vendasRecebidas))
-      } catch (error) {
-        console.error(
-          'Erro ao calcular boletos em aberto:',
-          error
-        )
-
+  const leituraVendasRef = useRef(null)
+  const telaVendasRef = useRef(tela)
+  telaVendasRef.current = tela
+  useEffect(() => {
+    const leitura = criarLeituraVendas({
+      contexto: () => JSON.stringify([apiBase, obterToken(),
+        localStorage.getItem('quitai_usuario'), sessionStorage.getItem('quitai_usuario')]),
+      carregar: async () => {
+        const resposta = await fetchAutenticado(`${apiBase}/vendas/listar`)
+        if (!resposta.ok) throw new Error('Erro ao buscar vendas')
+        const dados = await resposta.json()
+        if (!Array.isArray(dados)) throw new Error('Formato inesperado de vendas.')
+        return dados
+      },
+      iniciar: () => { setCarregandoVendas(true); setErroVendas('') },
+      sucesso: dados => {
+        setVendas(dados)
+        try { setTotalBoletosEmAbertoCentavos(somarBoletosEmAbertoCentavos(dados)) }
+        catch { setTotalBoletosEmAbertoCentavos(null) }
+      },
+      falha: () => {
         setTotalBoletosEmAbertoCentavos(null)
-      }
-    } catch (error) {
-      console.error(
-        'Erro ao buscar vendas:',
-        error
-      )
+        setErroVendas('Não foi possível carregar as vendas.')
+      },
+      finalizar: () => setCarregandoVendas(false),
+    })
+    leituraVendasRef.current = leitura
+    // O efeito de navegacao pode ter ocorrido antes da criacao do coordenador.
+    if (autenticado && !validandoSessao && (telaVendasRef.current === 'inicio' || telaVendasRef.current === 'vendas')) leitura.buscar()
+    return () => { leitura.encerrar(); if (leituraVendasRef.current === leitura) leituraVendasRef.current = null }
+  }, [apiBase, autenticado, validandoSessao])
 
-      setTotalBoletosEmAbertoCentavos(null)
-      setErroVendas(
-        'Não foi possível carregar as vendas.'
-      )
-    } finally {
-      setCarregandoVendas(false)
-    }
+  function buscarVendas(opcoes) {
+    return leituraVendasRef.current?.buscar(opcoes) || Promise.resolve()
   }
 
   // =========================================================
@@ -1079,7 +1071,7 @@ function App() {
       // 4. ATUALIZAR LISTAS
       // -------------------------------------------------------
 
-      await buscarVendas()
+      await buscarVendas({ atualizar: true })
       await buscarProdutos()
 
       // -------------------------------------------------------
@@ -1239,8 +1231,9 @@ function App() {
       setVendaSelecionada(null)
       setPagamentosVenda([])
       setErroDetalhesVenda('')
-      setTela('vendas')
-      await buscarVendas()
+      leituraVendasRef.current?.invalidar()
+      if (telaVendasRef.current === 'vendas') await buscarVendas()
+      else setTela('vendas')
     } catch (error) {
       if (contextoExclusaoRef.current !== contexto) return
       try { validarContextoExclusao(contexto) } catch (erroContexto) { setVendaParaExcluir(null); setErroDetalhesVenda(erroContexto.message); return }
@@ -1470,7 +1463,7 @@ function App() {
         throw new Error('Pagamento registrado, mas o historico nao pode ser atualizado.')
       }
 
-      await buscarVendas()
+      await buscarVendas({ atualizar: true })
     } catch (error) {
       console.error(
         'Erro ao registrar pagamento:',
