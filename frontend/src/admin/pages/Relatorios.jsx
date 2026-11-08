@@ -1,5 +1,6 @@
+import { obterExportacaoAdministrativa } from '../../services/exportacaoAdministrativa.js'
 import { fetchAutenticado as fetch } from '../../services/sessaoRevendedora.js'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8082'
 const moeda = v => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0)
@@ -110,6 +111,44 @@ export default function Relatorios({ onVoltar }) {
   const [aba, setAba] = useState('revendedoras')
   const [atualizacao, setAtualizacao] = useState(0)
 
+  const [exportando, setExportando] = useState(false)
+  const exportacaoRef = useRef(null)
+  const exportacaoMontadaRef = useRef(true)
+  useEffect(() => {
+    exportacaoMontadaRef.current = true
+    return () => { exportacaoMontadaRef.current = false; exportacaoRef.current?.abort() }
+  }, [])
+  async function exportarDados() {
+    if (exportacaoRef.current) return
+    if (!window.confirm('Este arquivo contem dados pessoais e financeiros de TODAS as revendedoras, sem os filtros do relatorio. Guarde-o criptografado e nao o compartilhe publicamente. Ele nao substitui um backup PostgreSQL completo. Continuar?')) return
+    const controle = new AbortController()
+    exportacaoRef.current = controle
+    setExportando(true)
+    setErro('')
+    const prazo = setTimeout(() => controle.abort(), 30000)
+    let url
+    try {
+      const blob = await obterExportacaoAdministrativa(API_URL, controle.signal)
+      if (controle.signal.aborted) return
+      url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'quitai-exportacao-v1-' + new Date().toISOString().replaceAll(':', '-') + '.json'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+    } catch (e) {
+      if (exportacaoMontadaRef.current) setErro(controle.signal.aborted ? 'Exportacao cancelada ou prazo excedido. Nenhum backup foi salvo.' : (e.message || 'Nao foi possivel exportar os dados.'))
+    } finally {
+      clearTimeout(prazo)
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 1000)
+      if (exportacaoRef.current === controle) {
+        exportacaoRef.current = null
+        if (exportacaoMontadaRef.current) setExportando(false)
+      }
+    }
+  }
+
   const carregar = useCallback(async signal => {
     setCarregando(true)
     setErro('')
@@ -143,7 +182,7 @@ export default function Relatorios({ onVoltar }) {
     <style>{estilo}</style>
     <header className="qr-top">
       <div><span className="qr-eyebrow">PAINEL GESTOR / ANÁLISE DE DADOS</span><h1 className="qr-title">Relatórios gerais</h1><p className="qr-subtitle">Acompanhe o desempenho das revendedoras e a movimentação do negócio.</p></div>
-      <div className="qr-top-actions"><button type="button" className="qr-btn" onClick={() => setAtualizacao(n => n + 1)} disabled={carregando}><Icone nome="atualizar" size={16}/>{carregando ? 'Atualizando...' : 'Atualizar dados'}</button></div>
+      <div className="qr-top-actions"><button type="button" className="qr-btn" onClick={exportarDados} disabled={exportando}>{exportando ? 'Exportando...' : 'Exportar dados'}</button><button type="button" className="qr-btn" onClick={() => setAtualizacao(n => n + 1)} disabled={carregando}><Icone nome="atualizar" size={16}/>{carregando ? 'Atualizando...' : 'Atualizar dados'}</button></div>
     </header>
 
     <form className="qr-filter-panel" onSubmit={filtrar}>

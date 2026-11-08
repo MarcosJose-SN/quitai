@@ -209,6 +209,7 @@ func main() {
 		"/admin/relatorios",
 		auth.AdminMiddleware(db, handlers.AdminRelatorios(db)),
 	)
+	http.Handle("/admin/relatorios/exportar", handlers.AdminExportarDados(db))
 
 	// EVENTOS DE SUPORTE
 

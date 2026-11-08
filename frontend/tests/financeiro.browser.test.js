@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import http from 'node:http'
@@ -25,20 +26,27 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
  const artefatos=await mkdtemp(path.join(tmpdir(),'quitai-react-test-'))
  await build({root,configFile:false,plugins:[react()],define:{'import.meta.env.VITE_API_URL':JSON.stringify('/api')},build:{outDir:artefatos},logLevel:'silent'})
  const requisicoes=[], efeitos=new Map(), retidas=[], exclusoes=[]
- let modo='normal', proximoId=1
+ let modo='normal', proximoId=1, exportacoes=0
  function responder(res,dados,status=201){if(!res.destroyed){res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(dados))}}
  const server=http.createServer(async(req,res)=>{
   try{
    const arquivos={'/services/operacoesFinanceiras.js':'src/services/operacoesFinanceiras.js','/services/sessaoRevendedora.js':'src/services/sessaoRevendedora.js','/services/intencoesFinanceirasStore.js':'src/services/intencoesFinanceirasStore.js'}
    if(arquivos[req.url]){res.writeHead(200,{'Content-Type':'text/javascript'});res.end(await readFile(path.join(root,arquivos[req.url])));return}
    if(req.url==='/' && req.method==='GET'){res.writeHead(200,{'Content-Type':'text/html'});res.end('<!doctype html><script>window.fixtureErrors=[];addEventListener("error",e=>fixtureErrors.push(e.message));addEventListener("unhandledrejection",e=>fixtureErrors.push(String(e.reason)));</script><script type="module">import * as fin from "/services/operacoesFinanceiras.js"; window.fin=fin;</script>');return}
-   if(req.url==='/app') {res.writeHead(200,{'Content-Type':'text/html'});res.end(await readFile(path.join(artefatos,'index.html')));return}
+   if(req.url==='/app' || req.url==='/admin') {res.writeHead(200,{'Content-Type':'text/html'});res.end(await readFile(path.join(artefatos,'index.html')));return}
    if(req.url.startsWith('/assets/')) {const nome=path.basename(req.url);res.writeHead(200,{'Content-Type':nome.endsWith('.css')?'text/css':nome.endsWith('.svg')?'image/svg+xml':'text/javascript'});res.end(await readFile(path.join(artefatos,'assets',nome)));return}
    if(req.method==='GET' && req.url.startsWith('/api/')) {
     if(req.url.includes('/eventos')) {res.writeHead(200,{'Content-Type':'text/event-stream'});res.write(': fixture\n\n');return}
     const venda={id:3,cliente_id:1,cliente_nome:'Cliente de teste',data_compra:'2026-01-01',data_vencimento:'2026-01-31',vencimento:'2026-01-31',total:10,valor_pago:10,saldo:0,total_parcelas:1,status:'QUITADO'}
     let dados=[]
-    if(req.url==='/api/auth/me') dados={id:1,nome:'Conta de teste',email:'fixture@example.invalid',ambiente_financeiro:'fixture-env-A',perfil:'revendedora',ativo:true}
+    if(req.url==='/api/auth/me') dados={id:1,nome:'Conta de teste',email:'fixture@example.invalid',ambiente_financeiro:'fixture-env-A',perfil:modo==='admin-exportacao'?'admin':'revendedora',ativo:true}
+    if(req.url==='/api/admin/relatorios') dados={resumo:{},revendedoras:[],clientes:[],produtos:[]}
+    if(req.url==='/api/admin/dashboard') dados={total_revendedoras:1,contas_ativas:1,contas_bloqueadas:0,novos_cadastros_30_dias:0}
+    if(req.url==='/api/admin/relatorios/exportar') {
+     ++exportacoes
+     const conteudo_json=JSON.stringify({ambiente_financeiro:'fixture-env-A',escopo:'todas_revendedoras_sem_filtros',dados:Object.fromEntries(['revendedoras','clientes','produtos','vendas','itens','parcelas','pagamentos'].map(k=>[k,[]]))})+'\n'
+     dados={formato:'quitai-exportacao-dados',versao:1,sha256:createHash('sha256').update(conteudo_json).digest('hex'),conteudo_json}
+    }
     if(req.url==='/api/sistema/publico') dados={manutencao:false,mensagem_manutencao:'',avisos:[]}
     if(req.url==='/api/vendas/listar') dados=[venda]
     if(req.url==='/api/vendas/3') dados={venda,itens:[{id:1,produto_nome:'Produto de teste',quantidade:1,preco_unitario:10,subtotal:10}],parcelas:[{id:4,venda_id:3,numero_parcela:1,valor:10,valor_pago:10,vencimento:'2026-01-31',status:'QUITADO'}]}
@@ -340,6 +348,20 @@ test('Web Locks reais: duas abas compartilham intencoes sem bancos externos', {t
    await cdp('Page.navigate',{url:base+'/'},b.session);await esperar(()=>avaliar(b,'Boolean(window.fin)'))
    await avaliar(b,`window.api=${JSON.stringify(api)};window.tipo='venda_completa';window.pedido={cliente_id:1,itens:[{produto_id:2,quantidade:1}]};true`)
    await avaliar(a,`window.api=${JSON.stringify(api)};true`)
+  })
+  await t.test('React Gestor exporta JSON validado com confirmacao e sem envio duplicado',async()=>{
+   await reset(a,b);modo='admin-exportacao';exportacoes=0
+   await cdp('Page.navigate',{url:base+'/admin'},b.session)
+   await esperar(()=>avaliar(b,`Array.from(document.querySelectorAll('button')).some(x=>x.textContent.includes('Relat\u00f3rios'))`))
+   await avaliar(b,`Array.from(document.querySelectorAll('button')).find(x=>x.textContent.includes('Relat\u00f3rios')).click();true`)
+   await esperar(()=>avaliar(b,"Array.from(document.querySelectorAll('button')).some(x=>x.textContent==='Exportar dados')"))
+   await avaliar(b,`window.confirm=texto=>{window.avisoExportacao=texto;return true};window.salvouExportacao=0;const original=URL.createObjectURL;URL.createObjectURL=blob=>{window.blobExportacao=blob;return original(blob)};HTMLAnchorElement.prototype.click=function(){window.salvouExportacao++;window.nomeExportacao=this.download};const botao=Array.from(document.querySelectorAll('button')).find(x=>x.textContent==='Exportar dados');botao.click();botao.click();true`)
+   await esperar(()=>avaliar(b,'window.salvouExportacao===1'))
+   assert.equal(exportacoes,1)
+   assert.ok(await avaliar(b,"avisoExportacao.includes('TODAS as revendedoras') && avisoExportacao.includes('pessoais')"))
+   assert.ok(await avaliar(b,"nomeExportacao.endsWith('.json')"))
+   assert.equal(await avaliar(b,"blobExportacao.text().then(x=>JSON.parse(x).versao)"),1)
+   modo='normal';await cdp('Page.navigate',{url:base+'/'},b.session);await esperar(()=>avaliar(b,'Boolean(window.fin)'))
   })
   await t.test('todas as abas fechadas e navegador reiniciado conservam intencao no mesmo perfil',async()=>{
    await reset(a,b);await abrir(a);modo='perder';assert.equal((await enviar(a)).ok,false);const chave=requisicoes[0].chave
