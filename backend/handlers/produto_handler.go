@@ -50,7 +50,13 @@ func CriarProduto(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		err := db.QueryRow(`
+		tx, finalizar, permitido := auth.IniciarCadastroProtegido(db, w, r)
+		if !permitido {
+			return
+		}
+		defer finalizar()
+
+		err := tx.QueryRowContext(r.Context(), `
 			INSERT INTO produtos
 				(usuario_id, nome, codigo, categoria, preco_custo, preco_venda, estoque)
 			VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -71,6 +77,11 @@ func CriarProduto(db *sql.DB) http.HandlerFunc {
 				return
 			}
 			http.Error(w, "Erro ao cadastrar produto", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Nao foi possivel confirmar o cadastro. Confira o resultado antes de tentar novamente.", http.StatusServiceUnavailable)
 			return
 		}
 

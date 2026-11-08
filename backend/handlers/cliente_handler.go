@@ -35,7 +35,13 @@ func CriarCliente(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		err := db.QueryRow(`
+		tx, finalizar, permitido := auth.IniciarCadastroProtegido(db, w, r)
+		if !permitido {
+			return
+		}
+		defer finalizar()
+
+		err := tx.QueryRowContext(r.Context(), `
 			INSERT INTO clientes (usuario_id, nome, telefone, observacoes)
 			VALUES ($1, $2, $3, $4)
 			RETURNING id
@@ -48,6 +54,11 @@ func CriarCliente(db *sql.DB) http.HandlerFunc {
 
 		if err != nil {
 			http.Error(w, "Erro ao cadastrar cliente", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(); err != nil {
+			http.Error(w, "Nao foi possivel confirmar o cadastro. Confira o resultado antes de tentar novamente.", http.StatusServiceUnavailable)
 			return
 		}
 
